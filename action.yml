@@ -1,7 +1,7 @@
 name: 'Cambium: GraphQL schema diff'
 description: >-
-  Diffs a committed GraphQL schema across a pull request and posts one
-  comment: what breaks, what might, and what is safe.
+  Diffs a committed GraphQL schema across a pull request and posts one comment:
+  what breaks, what might, and what is safe.
 author: Daniel Larsson
 
 branding:
