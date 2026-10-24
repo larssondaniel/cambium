@@ -102,7 +102,13 @@ async function main(): Promise<void> {
       await tab.goto(pathToFileURL(file).href)
       await tab.evaluate(() => document.fonts.ready)
       const path = join(outDir, `comment-${theme}.png`)
-      await tab.locator('.stage').screenshot({ path, animations: 'disabled' })
+      // Transparent outside the stage's rounded corners, so the PNG sits on
+      // GitHub's dark theme without white triangles.
+      await tab.locator('.stage').screenshot({
+        path,
+        animations: 'disabled',
+        omitBackground: true
+      })
       console.log(`wrote ${path}`)
       await context.close()
     }
