@@ -6,31 +6,16 @@ what breaks, what might, and what is safe.
 
 ## What reviewers see
 
-> ### Breaking schema change
->
-> 1 breaking · 2 dangerous · 5 safe
->
-> #### Breaking
->
-> - `User.email` removed
->
-> #### Dangerous
->
-> - `OrderStatus.REFUNDED` added to enum
-> - `Query.search(sort:)` optional argument added
->
-> <details><summary>5 safe changes</summary>
->
-> - `Invoice` type added
-> - `Query.invoices` added
-> - `User.contact` deprecated: "Use `User.contact.email`"
-> - `User.displayName` added
-> - `User.name` changed type from `String` to `String!`
->
-> </details>
->
-> <sub>Cambium ·
-> [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/comment-dark.png">
+  <img src="docs/images/comment-light.png" width="800" alt="A GitHub pull request comment by github-actions. Heading: Breaking schema change. Counts line: 1 breaking, 2 dangerous, 5 safe. Under Breaking: User.email removed. Under Dangerous: OrderStatus.REFUNDED added to enum, and Query.search(sort:) optional argument added. Then a collapsed section titled 5 safe changes, and a footer reading Cambium, larssondaniel/cambium.">
+</picture>
+
+This is Cambium's own comment on
+[pull request #6](https://github.com/larssondaniel/cambium/pull/6) of this
+repository, which changes the fixture schema the way a real pull request would.
+Expanding "5 safe changes" shows the additions, the deprecation with its reason
+quoted, and a field tightened from `String` to `String!`.
 
 The comment updates in place on every push, and the step fails on breaking
 changes, so Cambium can be a required check.
