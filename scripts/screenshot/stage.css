@@ -1,0 +1,168 @@
+/*
+ * The README hero: a GitHub-style comment card on a padded stage. Colours
+ * are GitHub's light and dark palettes. Fonts are the bundled Inter and
+ * JetBrains Mono, not the system stack, so the capture does not depend on
+ * which fonts the machine has.
+ */
+
+body {
+  margin: 0;
+  display: inline-block;
+  font-family: Inter, sans-serif;
+  color: #1f2328;
+}
+
+.stage {
+  width: 760px;
+  padding: 28px;
+  box-sizing: border-box;
+  border-radius: 12px;
+}
+
+.stage.light {
+  background: #f6f8fa;
+}
+
+.stage.dark {
+  background: #010409;
+}
+
+.card {
+  border: 1px solid #d1d9e0;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.card .head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f6f8fa;
+  border-bottom: 1px solid #d1d9e0;
+  font-size: 14px;
+  color: #59636e;
+}
+
+.card .head b {
+  color: #1f2328;
+  font-weight: 600;
+}
+
+.card .head .bot {
+  font-size: 12px;
+  line-height: 18px;
+  padding: 0 7px;
+  border: 1px solid #d1d9e0;
+  border-radius: 2em;
+  color: #59636e;
+}
+
+.card .head .avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #d1d9e0;
+  display: grid;
+  place-items: center;
+}
+
+.card .head .avatar svg {
+  width: 16px;
+  height: 16px;
+  fill: #1f2328;
+}
+
+.card .body {
+  padding: 16px;
+}
+
+.markdown-body {
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: transparent;
+}
+
+.markdown-body code {
+  font-family: 'JetBrains Mono', monospace;
+  background: #818b981f;
+}
+
+.markdown-body h3 {
+  font-size: 1.25em;
+  margin-top: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.markdown-body h4 {
+  font-size: 1em;
+}
+
+.markdown-body details summary {
+  cursor: default;
+}
+
+.markdown-body details[open] summary {
+  margin-bottom: 8px;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body sub {
+  font-size: 12px;
+  color: #59636e;
+}
+
+.dark .card {
+  background: #0d1117;
+  border-color: #3d444d;
+}
+
+.dark .card .head {
+  background: #151b23;
+  border-color: #3d444d;
+  color: #9198a1;
+}
+
+.dark .card .head b {
+  color: #f0f6fc;
+}
+
+.dark .card .head .bot {
+  border-color: #3d444d;
+  color: #9198a1;
+}
+
+.dark .card .head .avatar {
+  background: #fff;
+  border-color: #3d444d;
+}
+
+.dark .markdown-body {
+  color: #f0f6fc;
+}
+
+.dark .markdown-body h3,
+.dark .markdown-body h4,
+.dark .markdown-body strong {
+  color: #f0f6fc;
+}
+
+.dark .markdown-body code {
+  background: #3d444d66;
+  color: #f0f6fc;
+}
+
+.dark .markdown-body a {
+  color: #4493f8;
+}
+
+.dark .markdown-body sub {
+  color: #9198a1;
+}
