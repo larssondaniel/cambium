@@ -1,6 +1,10 @@
-# v1 design decisions
+# Design decisions
 
-Running log from the design session. Input to the v1 spec, published as larssondaniel/cambium#1. ADRs hold the reasoning for the hard-to-reverse ones; this file holds the rest.
+Running log from the design sessions. ADRs hold the reasoning for the hard-to-reverse ones; this file holds the rest.
+
+## v1, 2026-10-23
+
+Input to the v1 spec, published as larssondaniel/cambium#1.
 
 1. **Schemas are committed files**, read at the PR's base and head. The action never generates or introspects. (ADR-0001)
 2. **Fetched via the Contents API**, no `actions/checkout` required or used. (ADR-0002)
@@ -29,3 +33,9 @@ Running log from the design session. Input to the v1 spec, published as larssond
     - Implementation baseline, taken as idiomatic: actions/typescript-action template as-is (Node 24, ESM, Rollup to committed `dist/`, Jest 30).
     - Not v1: generate-at-head, label override, two-workflow fork mode, Canopy link, custom bot identity, logo or wordmark, any input beyond the three.
 16. **One schema per step.** The sticky comment marker includes the schema path, so a team can add the step twice for two schemas and each run updates its own comment. A multi-schema single comment is v2.
+
+## v2, 2026-10-24
+
+Input to the v2 spec. Numbering continues from v1.
+
+17. **The next release is the per-PR acknowledgement label, alone.** The test is v1's: the smallest thing a team already running Cambium would upgrade for. The label is the first wall a team hits once Cambium is a required check: a correct breaking change, such as removing a field after its deprecation sunset, can only pass by editing `fail-on` in the workflow, which either stays lowered or costs a second PR. The label is per PR, visible in the timeline and reviewer-owned, and it lives in the comment. It does not weaken the gate: on `pull_request` the workflow runs from the PR's own head, so an author could already lower `fail-on` inside the PR; the gate was always a visible convention, never a boundary against the author. The other six ideas stay in the log: generate-at-head reopens ADR-0001 and wins adopters, not upgrades; Open in Canopy is blocked outside this repo; two-workflow fork mode doubles the surface for public repos only; custom bot identity is docs, not a version; a logo is not a feature; two schemas already work as two steps.
