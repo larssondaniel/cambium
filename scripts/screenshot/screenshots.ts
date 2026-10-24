@@ -43,11 +43,22 @@ function commentMarkdown(): string {
     label: 'head',
     sha: 'head'
   })
-  return render({
-    event: 'changed',
-    schemaPath: 'schema.graphql',
-    changes: diffSchemas(base, head)
-  })
+  // The action's defaults: the gate fails on breaking changes and the
+  // acceptance label is not on the pull request, so the comment names it.
+  return render(
+    {
+      event: 'changed',
+      schemaPath: 'schema.graphql',
+      changes: diffSchemas(base, head)
+    },
+    {
+      gate: {
+        failOn: 'breaking',
+        acceptLabel: 'schema-change-accepted',
+        accepted: false
+      }
+    }
+  )
 }
 
 function fontFace(family: string, weight: number, file: string): string {
