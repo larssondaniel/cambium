@@ -85,7 +85,7 @@ Researched 2026-10-24. Sources are primary only: docs.github.com, github.blog ch
 ### Other label-as-exception tools
 
 | Tool | Label | Configurable | On by default | Read from | Match | How users learn of it |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | dangoslen/changelog-enforcer (v3.7.0) | `Skip-Changelog` | yes, `skipLabels` (comma list) | yes, the default is set | payload (`context.payload.pull_request`) | exact `includes` after trim | docs only. The failure text is `No update to ${changeLogPath} found!`, customizable via `missingUpdateErrorMessage` |
 | amannn/action-semantic-pull-request (v6.1.1) | none (README example: `bot`, `ignore-semantic-pull-request`) | yes, `ignoreLabels` (newline list) | no | API (`pulls.get`) | exact `includes` | docs only. On skip it logs `Validation was skipped because the PR label "…" was found.` and failure messages do not mention it |
 | Kubernetes Prow `release-note` plugin | `release-note-none` (blocking label `do-not-merge/release-note-label-needed`) | label constants are fixed in code | yes, when the plugin is enabled | Prow's own GitHub client | n/a | **bot comment**: `Adding the "do-not-merge/release-note-label-needed" label because no release-note block was detected, please follow our [release note process](…) to remove it.` Plugin help documents `/release-note-none` |
