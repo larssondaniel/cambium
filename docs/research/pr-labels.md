@@ -122,7 +122,7 @@ Sources: https://github.com/dangoslen/changelog-enforcer/blob/master/action.yml 
 
 ## Implications for Cambium (inference, not sourced)
 
-_Superseded in part by decision 20 in `docs/design-decisions.md`: labels are read live through the issue labels endpoint, not from the payload. The bullets below are the inference made before that decision._
+*Superseded in part by decision 20 in `docs/design-decisions.md`: labels are read live through the issue labels endpoint, not from the payload. The bullets below are the inference made before that decision.*
 
 - Read labels from `context.payload.pull_request.labels`. This needs no API call and no extra permission, and it works on forks and Dependabot. The cost: a Re-run after labelling probably will not see the label, so the comment should say a new run starts automatically once the label is added, provided the workflow lists `labeled`/`unlabeled`.
 - The README snippet must list `types: [opened, synchronize, reopened, labeled, unlabeled]`. Otherwise adding the label does nothing until the next push. This is the most likely support question.
