@@ -55,7 +55,7 @@ _Avoid_: coordinate, location, selector
 ## Gate
 
 **Gate**:
-The rule that fails the step when any change at or above the `fail-on` severity exists, so that Cambium can be a required check. The gate decides the step's outcome, never the report's content.
+The rule that fails the step when any change at or above the `fail-on` severity exists, so that Cambium can be a required check. The gate decides the step's outcome, never the verdict, counts or sections.
 _Avoid_: threshold, policy, blocker, check rule
 
 **Acceptance label**:
@@ -67,7 +67,7 @@ The state of a run whose gate would fail but passes because the acceptance label
 _Avoid_: approved, overridden, bypassed, skipped
 
 **Gate line**:
-The one sentence at the foot of the report, above the footer, that says what the check fails on and names the acceptance label, or says that the changes are accepted. Present only when the gate would fail.
+The short paragraph at the foot of the sticky comment and the job summary, above the footer, that says what the check fails on and names the acceptance label, or says that the changes are accepted. Present only when the gate would fail.
 _Avoid_: hint, call to action, footer note
 
 ## Naming
