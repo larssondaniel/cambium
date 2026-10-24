@@ -32,9 +32,12 @@ describe('main', () => {
     github.context.payload = { pull_request: pullRequest }
     core.getInput.mockImplementation(
       (name) =>
-        ({ schema: 'schema.graphql', 'fail-on': '', 'github-token': 't' })[
-          name
-        ] ?? ''
+        ({
+          schema: 'schema.graphql',
+          'fail-on': '',
+          'accept-label': 'schema-change-accepted',
+          'github-token': 't'
+        })[name] ?? ''
     )
   })
 
@@ -53,7 +56,7 @@ describe('main', () => {
   it('passes inputs and the pull request to the orchestrator and applies its outcome', async () => {
     run.mockResolvedValue({
       outputs: { breaking: 1, dangerous: 2, safe: 3 },
-      notice: 'note',
+      notices: ['first note', 'second note'],
       failure: 'nope'
     })
 
@@ -61,7 +64,11 @@ describe('main', () => {
 
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
-        inputs: { schema: 'schema.graphql', failOn: 'breaking' },
+        inputs: {
+          schema: 'schema.graphql',
+          failOn: 'breaking',
+          acceptLabel: 'schema-change-accepted'
+        },
         pullRequest: {
           number: 7,
           baseSha: 'tip0000',
@@ -74,8 +81,29 @@ describe('main', () => {
     expect(core.setOutput).toHaveBeenCalledWith('breaking-count', 1)
     expect(core.setOutput).toHaveBeenCalledWith('dangerous-count', 2)
     expect(core.setOutput).toHaveBeenCalledWith('safe-count', 3)
-    expect(core.notice).toHaveBeenCalledWith('note')
+    expect(core.notice.mock.calls).toEqual([['first note'], ['second note']])
     expect(core.setFailed).toHaveBeenCalledWith('nope')
+  })
+
+  it('passes an empty accept-label through as empty, with no fallback to the default', async () => {
+    core.getInput.mockImplementation(
+      (name) => ({ schema: 'schema.graphql', 'github-token': 't' })[name] ?? ''
+    )
+    run.mockResolvedValue({ notices: [] })
+
+    await main()
+
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputs: {
+          schema: 'schema.graphql',
+          failOn: 'breaking',
+          acceptLabel: ''
+        }
+      })
+    )
+    expect(core.notice).not.toHaveBeenCalled()
+    expect(core.setFailed).not.toHaveBeenCalled()
   })
 
   it('fails with the message of an Error the orchestrator throws', async () => {

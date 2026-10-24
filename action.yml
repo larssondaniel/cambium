@@ -19,6 +19,12 @@ inputs:
       or `never`.
     required: false
     default: breaking
+  accept-label:
+    description:
+      Label that lets the check pass for one pull request when the gate would
+      fail. Empty disables it.
+    required: false
+    default: schema-change-accepted
   github-token:
     description:
       Token used to read the schema file and post the comment. Defaults to the
