@@ -34506,16 +34506,25 @@ function statusOf(error) {
 }
 
 /**
- * Reads the pull request out of the event payload. The head is from a fork
- * when its repository is not the base repository, or is gone.
+ * Reads the pull request out of the event payload. The token is read-only,
+ * so the comment is impossible, when the head is from a fork (its repository
+ * is not the base repository, or is gone) or when Dependabot opened the pull
+ * request, which GitHub treats the same way even on a same-repository branch.
  */
 function pullRequestFromPayload(payload) {
     return {
         number: payload.number,
         baseSha: payload.base.sha,
         headSha: payload.head.sha,
-        fromFork: payload.head.repo?.full_name !== payload.base.repo.full_name
+        readOnlyToken: readOnlyTokenReason(payload)
     };
+}
+function readOnlyTokenReason(payload) {
+    if (payload.head.repo?.full_name !== payload.base.repo.full_name)
+        return 'fork';
+    if (payload.user.login === 'dependabot[bot]')
+        return 'dependabot';
+    return undefined;
 }
 
 const MAX_ARRAY_LENGTH = 10;
@@ -44615,8 +44624,39 @@ function inventoryLine(inventory) {
         .map(([count, one, many]) => `${count} ${count === 1 ? one : many}`);
     return parts.length > 0 ? parts.join(' · ') : 'No types';
 }
-/** One line per change: the schema path in code, a plain verb, before and after when a value changed. */
+/**
+ * One line per change: the schema path in code, a plain verb, before and
+ * after when a value changed. Dangerous lines, and only those, end with a
+ * fixed reason clause after a middle dot.
+ */
 function phrase(change) {
+    const line = describe(change);
+    const reason = change.severity === 'dangerous' ? reasonFor(change) : undefined;
+    return reason ? `${line} · ${reason}` : line;
+}
+/**
+ * Why a dangerous change is dangerous, in the reviewer's terms: what an
+ * existing client does with it. One clause per reason, never per kind.
+ */
+function reasonFor(change) {
+    switch (change.kind) {
+        case 'VALUE_ADDED_TO_ENUM':
+            return `clients that switch over ${code(change.path.split('.')[0])} may not handle it`;
+        case 'TYPE_ADDED_TO_UNION':
+            return `clients that switch over ${code(change.path)} may not handle it`;
+        case 'OPTIONAL_ARG_ADDED':
+        case 'OPTIONAL_INPUT_FIELD_ADDED':
+            return 'existing calls now take its default';
+        case 'IMPLEMENTED_INTERFACE_ADDED':
+            return `fragments on ${code(change.subject)} now match this type`;
+        case 'ARG_DEFAULT_VALUE_CHANGE':
+        case 'INPUT_FIELD_DEFAULT_VALUE_CHANGE':
+            return 'callers that omit it now get the new value';
+        default:
+            return undefined;
+    }
+}
+function describe(change) {
     const path = code(change.path);
     const subject = code(change.subject ?? '');
     switch (change.kind) {
@@ -44730,13 +44770,14 @@ function quote(text) {
 }
 /**
  * Makes schema-authored text inert in markdown: punctuation that could open
- * markup, a link, an image or a code span is backslash-escaped, and an `@`
- * gets a zero-width space after it so GitHub does not turn it into a mention
- * that pings someone on every comment edit.
+ * markup, a link or an image is backslash-escaped, and an `@` gets a
+ * zero-width space after it so GitHub does not turn it into a mention that
+ * pings someone on every comment edit. Backticks are left alone: at worst
+ * they open a code span, which cannot reach outside the line.
  */
 function escapeMarkdown(text) {
     return text
-        .replace(/[\\`*_~<>[\]()!|#]/g, (char) => `\\${char}`)
+        .replace(/[\\*_~<>[\]()!|#]/g, (char) => `\\${char}`)
         .replace(/@/g, '@\u200b');
 }
 
@@ -44798,6 +44839,10 @@ function shortSha(sha) {
 }
 
 const FAIL_ON_VALUES = ['breaking', 'dangerous', 'never'];
+const READ_ONLY_NOTICES = {
+    fork: 'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.',
+    dependabot: 'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
+};
 /** Comments above this length are truncated; GitHub's limit is 65,536 characters. */
 const COMMENT_BUDGET = 60_000;
 const PERMISSIONS_HINT = [
@@ -44846,9 +44891,8 @@ async function run({ inputs, pullRequest, github, summaryUrl }) {
     const counts = countsOf(report);
     await github.writeSummary(render(report));
     const outcome = { outputs: counts };
-    if (pullRequest.fromFork) {
-        outcome.notice =
-            'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.';
+    if (pullRequest.readOnlyToken) {
+        outcome.notice = READ_ONLY_NOTICES[pullRequest.readOnlyToken];
     }
     else {
         const marker = stickyMarker(schemaPath);

@@ -20,6 +20,7 @@ const { main } = await import('../src/main.js')
 
 const pullRequest = {
   number: 7,
+  user: { login: 'octocat' },
   base: { sha: 'tip0000', repo: { full_name: 'acme/api' } },
   head: { sha: 'head000', repo: { full_name: 'acme/api' } }
 }
@@ -65,7 +66,7 @@ describe('main', () => {
           number: 7,
           baseSha: 'tip0000',
           headSha: 'head000',
-          fromFork: false
+          readOnlyToken: undefined
         },
         summaryUrl: 'https://github.com/acme/api/actions/runs/42'
       })

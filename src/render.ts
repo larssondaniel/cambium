@@ -155,8 +155,41 @@ function inventoryLine(inventory: SchemaInventory): string {
   return parts.length > 0 ? parts.join(' · ') : 'No types'
 }
 
-/** One line per change: the schema path in code, a plain verb, before and after when a value changed. */
+/**
+ * One line per change: the schema path in code, a plain verb, before and
+ * after when a value changed. Dangerous lines, and only those, end with a
+ * fixed reason clause after a middle dot.
+ */
 export function phrase(change: Change): string {
+  const line = describe(change)
+  const reason = change.severity === 'dangerous' ? reasonFor(change) : undefined
+  return reason ? `${line} · ${reason}` : line
+}
+
+/**
+ * Why a dangerous change is dangerous, in the reviewer's terms: what an
+ * existing client does with it. One clause per reason, never per kind.
+ */
+export function reasonFor(change: Change): string | undefined {
+  switch (change.kind) {
+    case 'VALUE_ADDED_TO_ENUM':
+      return `clients that switch over ${code(change.path.split('.')[0])} may not handle it`
+    case 'TYPE_ADDED_TO_UNION':
+      return `clients that switch over ${code(change.path)} may not handle it`
+    case 'OPTIONAL_ARG_ADDED':
+    case 'OPTIONAL_INPUT_FIELD_ADDED':
+      return 'existing calls now take its default'
+    case 'IMPLEMENTED_INTERFACE_ADDED':
+      return `fragments on ${code(change.subject)} now match this type`
+    case 'ARG_DEFAULT_VALUE_CHANGE':
+    case 'INPUT_FIELD_DEFAULT_VALUE_CHANGE':
+      return 'callers that omit it now get the new value'
+    default:
+      return undefined
+  }
+}
+
+function describe(change: Change): string {
   const path = code(change.path)
   const subject = code(change.subject ?? '')
   switch (change.kind) {
@@ -278,12 +311,13 @@ function quote(text: string): string {
 
 /**
  * Makes schema-authored text inert in markdown: punctuation that could open
- * markup, a link, an image or a code span is backslash-escaped, and an `@`
- * gets a zero-width space after it so GitHub does not turn it into a mention
- * that pings someone on every comment edit.
+ * markup, a link or an image is backslash-escaped, and an `@` gets a
+ * zero-width space after it so GitHub does not turn it into a mention that
+ * pings someone on every comment edit. Backticks are left alone: at worst
+ * they open a code span, which cannot reach outside the line.
  */
 function escapeMarkdown(text: string): string {
   return text
-    .replace(/[\\`*_~<>[\]()!|#]/g, (char) => `\\${char}`)
+    .replace(/[\\*_~<>[\]()!|#]/g, (char) => `\\${char}`)
     .replace(/@/g, '@\u200b')
 }

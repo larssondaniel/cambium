@@ -3,9 +3,10 @@ A person with an account.
 """
 type User {
   id: ID!
-  name: String!
+  name: String
+  email: String @deprecated(reason: "Use `User.contact.email`")
   displayName: String
-  contact: Contact @deprecated(reason: "Use `User.contact.email`")
+  contact: Contact
 }
 
 type Contact {
@@ -24,6 +25,7 @@ type Order {
   id: ID!
   status: OrderStatus!
   customer: User!
+  invoice: Invoice
 }
 
 type Invoice {
@@ -34,7 +36,7 @@ type Invoice {
 
 type Query {
   user(id: ID!): User
-  orders(status: OrderStatus): [Order!]!
+  orders(status: OrderStatus!): [Order!]!
   invoices(status: OrderStatus): [Invoice!]!
   search(term: String!, sort: String): [User!]!
 }

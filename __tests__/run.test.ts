@@ -30,7 +30,7 @@ interface Scenario {
   base?: string
   head?: string
   failOn?: string
-  fromFork?: boolean
+  readOnlyToken?: 'fork' | 'dependabot'
   existingComment?: string
   forbidden?: 'read' | 'write'
   commentError?: Error
@@ -54,7 +54,7 @@ async function cambium(
       number: 7,
       baseSha: BASE_SHA,
       headSha: HEAD_SHA,
-      fromFork: scenario.fromFork ?? false
+      readOnlyToken: scenario.readOnlyToken
     },
     github,
     summaryUrl: 'https://github.com/acme/api/actions/runs/1'
@@ -322,7 +322,10 @@ describe('the gate', () => {
 
 describe('a pull request from a fork', () => {
   it('skips the comment, writes the summary and says so in a notice', async () => {
-    const { outcome, github } = await cambium({ ...example, fromFork: true })
+    const { outcome, github } = await cambium({
+      ...example,
+      readOnlyToken: 'fork'
+    })
 
     expect(github.comment).toBeUndefined()
     expect(github.summary).toContain('### Breaking schema change')
@@ -332,12 +335,45 @@ describe('a pull request from a fork', () => {
   })
 
   it('still applies the gate and sets outputs', async () => {
-    const { outcome } = await cambium({ ...example, fromFork: true })
+    const { outcome } = await cambium({ ...example, readOnlyToken: 'fork' })
 
     expect(outcome.failure).toBe(
       '1 breaking change in `schema.graphql` (fail-on: breaking).'
     )
     expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
+  })
+})
+
+describe('a pull request opened by Dependabot', () => {
+  it('is treated like a fork: summary and gate, a notice, no comment', async () => {
+    const { outcome, github } = await cambium({
+      ...example,
+      readOnlyToken: 'dependabot'
+    })
+
+    expect(github.comment).toBeUndefined()
+    expect(github.summary).toContain('### Breaking schema change')
+    expect(outcome.notice).toBe(
+      'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
+    )
+    expect(outcome.failure).toBe(
+      '1 breaking change in `schema.graphql` (fail-on: breaking).'
+    )
+    expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
+  })
+})
+
+describe('backticks in quoted text', () => {
+  it('render a balanced pair as a code span and leave an unbalanced one harmless', async () => {
+    const { github } = await cambium({
+      base: 'type User { a: String b: String }',
+      head: 'type User { a: String @deprecated(reason: "Use `User.b`") b: String @deprecated(reason: "Stray ` here") }',
+      failOn: 'never'
+    })
+
+    expect(github.summary).toContain(
+      '- `User.a` deprecated: "Use `User.b`"\n- `User.b` deprecated: "Stray ` here"\n\n<sub>Cambium'
+    )
   })
 })
 

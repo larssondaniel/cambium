@@ -21,20 +21,20 @@ exports[`a pull request that changes the schema posts the comment: verdict, coun
 
 #### Breaking
 
-- \`User.email\` removed
+- \`Query.orders(status:)\` changed type from \`OrderStatus\` to \`OrderStatus!\`
 
 #### Dangerous
 
-- \`OrderStatus.REFUNDED\` added to enum
-- \`Query.search(sort:)\` optional argument added
+- \`OrderStatus.REFUNDED\` added to enum · clients that switch over \`OrderStatus\` may not handle it
+- \`Query.search(sort:)\` optional argument added · existing calls now take its default
 
 <details><summary>5 safe changes</summary>
 
 - \`Invoice\` type added
+- \`Order.invoice\` added
 - \`Query.invoices\` added
-- \`User.contact\` deprecated: "Use \\\`User.contact.email\\\`"
 - \`User.displayName\` added
-- \`User.name\` changed type from \`String\` to \`String!\`
+- \`User.email\` deprecated: "Use \`User.contact.email\`"
 
 </details>
 

@@ -5,8 +5,9 @@
  */
 import { describe, expect, it } from '@jest/globals'
 import type { Change, Severity } from '../src/diff/index.js'
+import { DangerousChangeType } from 'graphql'
 import type { Report } from '../src/report.js'
-import { render } from '../src/render.js'
+import { phrase, render } from '../src/render.js'
 
 function changes(severity: Severity, count: number): Change[] {
   const kind = {
@@ -32,6 +33,32 @@ function report(counts: Partial<Record<Severity, number>>): Report {
     ]
   }
 }
+
+describe('the reason clause on dangerous lines', () => {
+  it.each(Object.values(DangerousChangeType))('%s carries one', (kind) => {
+    const line = phrase({
+      severity: 'dangerous',
+      kind,
+      path: 'Type.field',
+      subject: 'Other'
+    })
+
+    expect(line).toMatch(/ · \S/)
+  })
+
+  it('is absent from breaking and safe lines', () => {
+    expect(
+      phrase({
+        severity: 'breaking',
+        kind: 'FIELD_REMOVED',
+        path: 'User.email'
+      })
+    ).not.toContain(' · ')
+    expect(
+      phrase({ severity: 'safe', kind: 'FIELD_ADDED', path: 'User.phone' })
+    ).not.toContain(' · ')
+  })
+})
 
 describe('collapsing the safe section', () => {
   it.each([

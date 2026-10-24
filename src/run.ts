@@ -15,8 +15,11 @@ export interface PullRequest {
   number: number
   baseSha: string
   headSha: string
-  /** True when the head repository is not the base repository. */
-  fromFork: boolean
+  /**
+   * Why the workflow token cannot comment, when it cannot: the head is from a
+   * fork, or Dependabot opened the pull request. Undefined when it can.
+   */
+  readOnlyToken?: 'fork' | 'dependabot'
 }
 
 export interface RunOptions {
@@ -37,6 +40,12 @@ export interface RunOutcome {
 }
 
 const FAIL_ON_VALUES = ['breaking', 'dangerous', 'never'] as const
+
+const READ_ONLY_NOTICES = {
+  fork: 'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.',
+  dependabot:
+    'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
+} as const
 type FailOn = (typeof FAIL_ON_VALUES)[number]
 
 /** Comments above this length are truncated; GitHub's limit is 65,536 characters. */
@@ -107,9 +116,8 @@ export async function run({
   await github.writeSummary(render(report))
 
   const outcome: RunOutcome = { outputs: counts }
-  if (pullRequest.fromFork) {
-    outcome.notice =
-      'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.'
+  if (pullRequest.readOnlyToken) {
+    outcome.notice = READ_ONLY_NOTICES[pullRequest.readOnlyToken]
   } else {
     const marker = stickyMarker(schemaPath)
     let result: StickyCommentResult

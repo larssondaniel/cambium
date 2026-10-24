@@ -9,18 +9,23 @@ Cambium is a GitHub Action that diffs a committed GraphQL schema between a pull
 request's merge-base and its head, and posts one comment that tells the reviewer
 what breaks, what might, and what is safe.
 
+Cambium needs a schema file committed in the repository, SDL or introspection
+JSON. It does not check out code, needs no registry or account, and nothing
+leaves GitHub.
+
 ## What reviewers see
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/comment-dark.png">
-  <img src="docs/images/comment-light.png" width="800" alt="A GitHub pull request comment by github-actions. Heading: Breaking schema change. Counts line: 1 breaking, 2 dangerous, 5 safe. Under Breaking: User.email removed. Under Dangerous: OrderStatus.REFUNDED added to enum, and Query.search(sort:) optional argument added. Then a collapsed section titled 5 safe changes, and a footer reading Cambium, larssondaniel/cambium.">
+  <img src="docs/images/comment-light.png" width="800" alt="A GitHub pull request comment by github-actions. Heading: Breaking schema change. Counts line: 1 breaking, 2 dangerous, 5 safe. Under Breaking: Query.orders(status:) changed type from OrderStatus to OrderStatus!. Under Dangerous: OrderStatus.REFUNDED added to enum, clients that switch over OrderStatus may not handle it; and Query.search(sort:) optional argument added, existing calls now take its default. Then a collapsed section titled 5 safe changes, and a footer reading Cambium, larssondaniel/cambium.">
 </picture>
 
 This is Cambium's own comment on
 [pull request #6](https://github.com/larssondaniel/cambium/pull/6) of this
 repository, which changes the fixture schema the way a real pull request would.
-Expanding "5 safe changes" shows the additions, the deprecation with its reason
-quoted, and a field tightened from `String` to `String!`.
+Expanding "5 safe changes" shows `User.email` deprecated with its reason quoted,
+and four additions: `Invoice`, `Query.invoices`, `Order.invoice` and
+`User.displayName`.
 
 The comment updates in place on every push, and the step fails on breaking
 changes, so Cambium can be a required check.
@@ -93,6 +98,9 @@ comment on them. It writes the full report to the job summary instead, emits a
 notice saying so, and still applies the `fail-on` gate. Do not switch to
 `pull_request_target` to get a comment: it runs with write access and is a known
 security hazard.
+
+Dependabot pull requests run with a read-only token, so they get the job summary
+and the gate but no comment.
 
 ## Required checks and `paths:` filters
 
