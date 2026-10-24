@@ -65,7 +65,7 @@ function renderChanges(
   if (report.changes.length === 0) {
     return [
       title,
-      `\`${report.schemaPath}\` is the same schema at the merge-base and at the head commit.`,
+      `\`${report.schemaPath}\` is the same schema at the merge-base and at the head.`,
       FOOTER
     ].join('\n\n')
   }
@@ -133,7 +133,7 @@ function renderWholeFileEvent(
   return [
     title,
     '1 breaking · 0 dangerous · 0 safe',
-    `${file} exists at the merge-base and is absent at the head commit.`,
+    `${file} exists at the merge-base and is absent at the head.`,
     FOOTER
   ].join('\n\n')
 }
@@ -155,8 +155,41 @@ function inventoryLine(inventory: SchemaInventory): string {
   return parts.length > 0 ? parts.join(' · ') : 'No types'
 }
 
-/** One line per change: the schema path in code, a plain verb, before and after when a value changed. */
+/**
+ * One line per change: the schema path in code, a plain verb, before and
+ * after when a value changed. Dangerous lines, and only those, end with a
+ * fixed reason clause after a middle dot.
+ */
 export function phrase(change: Change): string {
+  const line = describe(change)
+  const reason = change.severity === 'dangerous' ? reasonFor(change) : undefined
+  return reason ? `${line} · ${reason}` : line
+}
+
+/**
+ * Why a dangerous change is dangerous, in the reviewer's terms: what an
+ * existing client does with it. One clause per reason, never per kind.
+ */
+export function reasonFor(change: Change): string | undefined {
+  switch (change.kind) {
+    case 'VALUE_ADDED_TO_ENUM':
+      return `clients that switch over ${code(change.path.split('.')[0])} may not handle it`
+    case 'TYPE_ADDED_TO_UNION':
+      return `clients that switch over ${code(change.path)} may not handle it`
+    case 'OPTIONAL_ARG_ADDED':
+    case 'OPTIONAL_INPUT_FIELD_ADDED':
+      return 'existing calls now take its default'
+    case 'IMPLEMENTED_INTERFACE_ADDED':
+      return `fragments on ${code(change.subject)} now match this type`
+    case 'ARG_DEFAULT_VALUE_CHANGE':
+    case 'INPUT_FIELD_DEFAULT_VALUE_CHANGE':
+      return 'callers that omit it now get the new value'
+    default:
+      return undefined
+  }
+}
+
+function describe(change: Change): string {
   const path = code(change.path)
   const subject = code(change.subject ?? '')
   switch (change.kind) {
@@ -230,30 +263,61 @@ export function phrase(change: Change): string {
       return `${path} now allowed on ${subject}`
     // Text
     case 'DESCRIPTION_CHANGED':
-      return change.text === undefined
-        ? `${path} description removed`
-        : `${path} description changed: ${quote(change.text)}`
+      if (change.after === undefined)
+        return `${path} description ${quote(change.before ?? '')} removed`
+      if (change.before === undefined)
+        return `${path} description added: ${quote(change.after)}`
+      return `${path} description changed from ${quote(change.before)} to ${quote(change.after)}`
     case 'DEPRECATION_ADDED':
       return `${path} deprecated: ${quote(change.text ?? '')}`
     case 'DEPRECATION_REMOVED':
       return `${path} no longer deprecated`
     case 'DEPRECATION_REASON_CHANGED':
-      return `${path} deprecation reason changed: ${quote(change.after ?? '')}`
+      return `${path} deprecation reason changed from ${quote(change.before ?? '')} to ${quote(change.after ?? '')}`
     case 'UNRECOGNIZED':
-      return (change.description ?? '').replace(/\.$/, '')
+      return escapeMarkdown((change.description ?? '').replace(/\.$/, ''))
   }
 }
 
+/**
+ * Wraps text in a code span that survives any content: the fence is one
+ * backtick longer than the longest run inside, and content that starts or
+ * ends with a backtick is padded with spaces, as GitHub-flavoured markdown
+ * requires.
+ */
 function code(text: string | undefined): string {
-  return `\`${text ?? ''}\``
+  const content = text ?? ''
+  const longestRun = Math.max(
+    0,
+    ...[...content.matchAll(/`+/g)].map((match) => match[0].length)
+  )
+  const fence = '`'.repeat(longestRun + 1)
+  const padded =
+    longestRun > 0 && (content.startsWith('`') || content.endsWith('`'))
+      ? ` ${content} `
+      : content
+  return `${fence}${padded}${fence}`
 }
 
-/** Inlines text on one line, cut with an ellipsis when long. */
+/** Inlines text on one line, cut with an ellipsis when long, with markup neutralised. */
 function quote(text: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim()
   const cut =
     oneLine.length > QUOTE_LIMIT
       ? `${oneLine.slice(0, QUOTE_LIMIT - 1).replace(/[\s,;:]+$/, '')}…`
       : oneLine
-  return `"${cut}"`
+  return `"${escapeMarkdown(cut)}"`
+}
+
+/**
+ * Makes schema-authored text inert in markdown: punctuation that could open
+ * markup, a link or an image is backslash-escaped, and an `@` gets a
+ * zero-width space after it so GitHub does not turn it into a mention that
+ * pings someone on every comment edit. Backticks are left alone: at worst
+ * they open a code span, which cannot reach outside the line.
+ */
+function escapeMarkdown(text: string): string {
+  return text
+    .replace(/[\\*_~<>[\]()!|#]/g, (char) => `\\${char}`)
+    .replace(/@/g, '@\u200b')
 }

@@ -29045,6 +29045,14 @@ function error(message, properties = {}) {
     issueCommand('error', toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 /**
+ * Adds a warning issue
+ * @param message warning issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
+ */
+function warning(message, properties = {}) {
+    issueCommand('warning', toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
+/**
  * Adds a notice issue
  * @param message notice issue message. Errors will be converted to string via toString()
  * @param properties optional properties to add to the annotation.
@@ -34450,13 +34458,14 @@ class OctokitGitHub {
         }
     }
     async upsertStickyComment({ marker, body, createIfMissing }) {
-        const comments = await this.octokit.paginate(this.octokit.rest.issues.listComments, {
-            ...this.repo,
-            issue_number: this.pullNumber,
-            per_page: 100
-        });
-        const existing = comments.find((comment) => comment.body?.includes(marker));
         try {
+            // On a private repository a read-only token is refused here already.
+            const comments = await this.octokit.paginate(this.octokit.rest.issues.listComments, {
+                ...this.repo,
+                issue_number: this.pullNumber,
+                per_page: 100
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
             if (existing) {
                 await this.octokit.rest.issues.updateComment({
                     ...this.repo,
@@ -34481,13 +34490,41 @@ class OctokitGitHub {
         }
     }
     async writeSummary(markdown) {
-        await summary.addRaw(markdown, true).write();
+        try {
+            await summary.addRaw(markdown, true).write();
+        }
+        catch (error) {
+            // A summary over the 1 MiB cap must not cost the comment, the outputs or the gate.
+            warning(`Could not write the job summary: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 }
 function statusOf(error) {
     return typeof error === 'object' && error !== null && 'status' in error
         ? error.status
         : undefined;
+}
+
+/**
+ * Reads the pull request out of the event payload. The token is read-only,
+ * so the comment is impossible, when the head is from a fork (its repository
+ * is not the base repository, or is gone) or when Dependabot opened the pull
+ * request, which GitHub treats the same way even on a same-repository branch.
+ */
+function pullRequestFromPayload(payload) {
+    return {
+        number: payload.number,
+        baseSha: payload.base.sha,
+        headSha: payload.head.sha,
+        readOnlyToken: readOnlyTokenReason(payload)
+    };
+}
+function readOnlyTokenReason(payload) {
+    if (payload.head.repo?.full_name !== payload.base.repo.full_name)
+        return 'fork';
+    if (payload.user.login === 'dependabot[bot]')
+        return 'dependabot';
+    return undefined;
 }
 
 const MAX_ARRAY_LENGTH = 10;
@@ -44146,7 +44183,11 @@ function typeKindWord(type) {
 function findDeprecationChanges(base, head) {
     const changes = [];
     for (const path of deprecatablePaths(head)) {
-        const before = deprecationOf(resolvePath(base, path));
+        // An element born deprecated is already reported as added by graphql-js.
+        const inBase = resolvePath(base, path);
+        if (!inBase)
+            continue;
+        const before = deprecationOf(inBase);
         const after = deprecationOf(resolvePath(head, path));
         if (before === after)
             continue;
@@ -44167,8 +44208,7 @@ function findDeprecationChanges(base, head) {
                 kind: 'DEPRECATION_REASON_CHANGED',
                 path,
                 before,
-                after,
-                text: after
+                after
             });
         }
     }
@@ -44211,9 +44251,10 @@ function* deprecatablePaths(schema) {
  * for people.
  */
 function readGraphqlJsChanges(base, head) {
+    const schemas = new Schemas(base, head);
     return findSchemaChanges(base, head).map(({ type, description }) => {
         const kind = type;
-        const read = READERS[kind]?.(description, base, head);
+        const read = READERS[kind]?.(description, schemas);
         return read
             ? { severity: severityOf(kind), kind, ...read }
             : {
@@ -44223,6 +44264,35 @@ function readGraphqlJsChanges(base, head) {
                 description
             };
     });
+}
+/** The two schemas a reader looks values up in, plus the one piece of state a reader needs. */
+class Schemas {
+    base;
+    head;
+    directiveArgumentsSeen = new Map();
+    constructor(base, head) {
+        this.base = base;
+        this.head = head;
+    }
+    /**
+     * graphql-js names a directive argument whose description changed as
+     * `@tag(tag)`, losing the argument. It reports those arguments in the base
+     * directive's argument order, so the n-th such sentence for a directive is
+     * its n-th argument with a changed description.
+     */
+    nextChangedDirectiveArgument(directive) {
+        const baseArgs = this.base.getDirective(directive)?.args ?? [];
+        const headArgs = this.head.getDirective(directive)?.args ?? [];
+        const changed = baseArgs
+            .filter((arg) => {
+            const headArg = headArgs.find((a) => a.name === arg.name);
+            return headArg && descriptionOf(arg) !== descriptionOf(headArg);
+        })
+            .map((arg) => arg.name);
+        const seen = this.directiveArgumentsSeen.get(directive) ?? 0;
+        this.directiveArgumentsSeen.set(directive, seen + 1);
+        return changed[seen];
+    }
 }
 const NAME = String.raw `(\S+?)`;
 /** Builds a reader whose sentence names only the schema path. */
@@ -44258,7 +44328,7 @@ function typeChanged(pattern) {
     };
 }
 /** Default values can contain spaces, so they are read from the schemas, not the sentence. */
-const defaultChanged = (description, base, head) => {
+const defaultChanged = (description, { base, head }) => {
     const match = /^(\S+?) (?:defaultValue was removed|has changed defaultValue from .* to .*|added a defaultValue .*)\.$/.exec(description);
     if (!match)
         return undefined;
@@ -44274,25 +44344,24 @@ const defaultChanged = (description, base, head) => {
  * sentence prints a removed description as the word "undefined", and names a
  * directive argument by its directive's name twice (`@tag(tag)`).
  */
-const descriptionChanged = (description, base, head) => {
+const descriptionChanged = (description, schemas) => {
     const match = /^Description of (?:field |input-field |enum value |argument )?(\S+?) has changed to /.exec(description);
     if (!match)
         return undefined;
-    const path = repairDirectiveArgumentPath(match[1], base, head);
-    return { path, text: descriptionOf(resolvePath(head, path)) };
+    const path = repairDirectiveArgumentPath(match[1], schemas);
+    return {
+        path,
+        before: descriptionOf(resolvePath(schemas.base, path)),
+        after: descriptionOf(resolvePath(schemas.head, path))
+    };
 };
-function repairDirectiveArgumentPath(path, base, head) {
+function repairDirectiveArgumentPath(path, schemas) {
     const match = /^@(\w+)\(\1\)$/.exec(path);
     if (!match)
         return path;
     const directive = match[1];
-    const changedArgument = head
-        .getDirective(directive)
-        ?.args.find((arg) => descriptionOf(arg) !==
-        descriptionOf(base.getDirective(directive)?.args.find((a) => a.name === arg.name)));
-    return changedArgument
-        ? `@${directive}(${changedArgument.name}:)`
-        : `@${directive}`;
+    const argument = schemas.nextChangedDirectiveArgument(directive);
+    return argument ? `@${directive}(${argument}:)` : `@${directive}`;
 }
 const typeChangedKind = (description) => {
     const match = /^(\S+?) changed from an? (\w+) type to an? (\w+) type\.$/.exec(description);
@@ -44301,7 +44370,7 @@ const typeChangedKind = (description) => {
     const [, path, before, after] = match;
     return { path, before: before.toLowerCase(), after: after.toLowerCase() };
 };
-const typeRemoved = (description, base) => {
+const typeRemoved = (description, { base }) => {
     const match = /^(Standard scalar )?(\S+?) was removed(?: because it is not referenced anymore)?\.$/.exec(description);
     if (!match)
         return undefined;
@@ -44313,7 +44382,7 @@ const typeRemoved = (description, base) => {
             : typeKindWord(base.getType(path) ?? undefined)
     };
 };
-const typeAdded = (description, _base, head) => {
+const typeAdded = (description, { head }) => {
     const match = /^(\S+?) was added\.$/.exec(description);
     if (!match)
         return undefined;
@@ -44481,7 +44550,7 @@ function renderChanges(report, dropped, options) {
     if (report.changes.length === 0) {
         return [
             title,
-            `\`${report.schemaPath}\` is the same schema at the merge-base and at the head commit.`,
+            `\`${report.schemaPath}\` is the same schema at the merge-base and at the head.`,
             FOOTER
         ].join('\n\n');
     }
@@ -44537,7 +44606,7 @@ function renderWholeFileEvent(report) {
     return [
         title,
         '1 breaking · 0 dangerous · 0 safe',
-        `${file} exists at the merge-base and is absent at the head commit.`,
+        `${file} exists at the merge-base and is absent at the head.`,
         FOOTER
     ].join('\n\n');
 }
@@ -44555,8 +44624,39 @@ function inventoryLine(inventory) {
         .map(([count, one, many]) => `${count} ${count === 1 ? one : many}`);
     return parts.length > 0 ? parts.join(' · ') : 'No types';
 }
-/** One line per change: the schema path in code, a plain verb, before and after when a value changed. */
+/**
+ * One line per change: the schema path in code, a plain verb, before and
+ * after when a value changed. Dangerous lines, and only those, end with a
+ * fixed reason clause after a middle dot.
+ */
 function phrase(change) {
+    const line = describe(change);
+    const reason = change.severity === 'dangerous' ? reasonFor(change) : undefined;
+    return reason ? `${line} · ${reason}` : line;
+}
+/**
+ * Why a dangerous change is dangerous, in the reviewer's terms: what an
+ * existing client does with it. One clause per reason, never per kind.
+ */
+function reasonFor(change) {
+    switch (change.kind) {
+        case 'VALUE_ADDED_TO_ENUM':
+            return `clients that switch over ${code(change.path.split('.')[0])} may not handle it`;
+        case 'TYPE_ADDED_TO_UNION':
+            return `clients that switch over ${code(change.path)} may not handle it`;
+        case 'OPTIONAL_ARG_ADDED':
+        case 'OPTIONAL_INPUT_FIELD_ADDED':
+            return 'existing calls now take its default';
+        case 'IMPLEMENTED_INTERFACE_ADDED':
+            return `fragments on ${code(change.subject)} now match this type`;
+        case 'ARG_DEFAULT_VALUE_CHANGE':
+        case 'INPUT_FIELD_DEFAULT_VALUE_CHANGE':
+            return 'callers that omit it now get the new value';
+        default:
+            return undefined;
+    }
+}
+function describe(change) {
     const path = code(change.path);
     const subject = code(change.subject ?? '');
     switch (change.kind) {
@@ -44630,41 +44730,65 @@ function phrase(change) {
             return `${path} now allowed on ${subject}`;
         // Text
         case 'DESCRIPTION_CHANGED':
-            return change.text === undefined
-                ? `${path} description removed`
-                : `${path} description changed: ${quote(change.text)}`;
+            if (change.after === undefined)
+                return `${path} description ${quote(change.before ?? '')} removed`;
+            if (change.before === undefined)
+                return `${path} description added: ${quote(change.after)}`;
+            return `${path} description changed from ${quote(change.before)} to ${quote(change.after)}`;
         case 'DEPRECATION_ADDED':
             return `${path} deprecated: ${quote(change.text ?? '')}`;
         case 'DEPRECATION_REMOVED':
             return `${path} no longer deprecated`;
         case 'DEPRECATION_REASON_CHANGED':
-            return `${path} deprecation reason changed: ${quote(change.after ?? '')}`;
+            return `${path} deprecation reason changed from ${quote(change.before ?? '')} to ${quote(change.after ?? '')}`;
         case 'UNRECOGNIZED':
-            return (change.description ?? '').replace(/\.$/, '');
+            return escapeMarkdown((change.description ?? '').replace(/\.$/, ''));
     }
 }
+/**
+ * Wraps text in a code span that survives any content: the fence is one
+ * backtick longer than the longest run inside, and content that starts or
+ * ends with a backtick is padded with spaces, as GitHub-flavoured markdown
+ * requires.
+ */
 function code(text) {
-    return `\`${text ?? ''}\``;
+    const content = text ?? '';
+    const longestRun = Math.max(0, ...[...content.matchAll(/`+/g)].map((match) => match[0].length));
+    const fence = '`'.repeat(longestRun + 1);
+    const padded = longestRun > 0 && (content.startsWith('`') || content.endsWith('`'))
+        ? ` ${content} `
+        : content;
+    return `${fence}${padded}${fence}`;
 }
-/** Inlines text on one line, cut with an ellipsis when long. */
+/** Inlines text on one line, cut with an ellipsis when long, with markup neutralised. */
 function quote(text) {
     const oneLine = text.replace(/\s+/g, ' ').trim();
     const cut = oneLine.length > QUOTE_LIMIT
         ? `${oneLine.slice(0, QUOTE_LIMIT - 1).replace(/[\s,;:]+$/, '')}…`
         : oneLine;
-    return `"${cut}"`;
+    return `"${escapeMarkdown(cut)}"`;
+}
+/**
+ * Makes schema-authored text inert in markdown: punctuation that could open
+ * markup, a link or an image is backslash-escaped, and an `@` gets a
+ * zero-width space after it so GitHub does not turn it into a mention that
+ * pings someone on every comment edit. Backticks are left alone: at worst
+ * they open a code span, which cannot reach outside the line.
+ */
+function escapeMarkdown(text) {
+    return text
+        .replace(/[\\*_~<>[\]()!|#]/g, (char) => `\\${char}`)
+        .replace(/@/g, '@\u200b');
 }
 
 /** A schema file that could not be turned into a schema. */
 class SchemaFileError extends Error {
     path;
     origin;
-    cause;
     constructor(path, origin, cause) {
-        super(`Could not parse \`${path}\` at the ${origin.label} (${shortSha(origin.sha)}): ${cause.message}`);
+        super(`Could not parse the ${origin.label} schema, \`${path}\` at ${shortSha(origin.sha)}: ${cause.message}`, { cause });
         this.path = path;
         this.origin = origin;
-        this.cause = cause;
         this.name = 'SchemaFileError';
     }
 }
@@ -44715,6 +44839,10 @@ function shortSha(sha) {
 }
 
 const FAIL_ON_VALUES = ['breaking', 'dangerous', 'never'];
+const READ_ONLY_NOTICES = {
+    fork: 'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.',
+    dependabot: 'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
+};
 /** Comments above this length are truncated; GitHub's limit is 65,536 characters. */
 const COMMENT_BUDGET = 60_000;
 const PERMISSIONS_HINT = [
@@ -44735,6 +44863,11 @@ async function run({ inputs, pullRequest, github, summaryUrl }) {
         };
     }
     const schemaPath = inputs.schema;
+    if (schemaPath.includes('-->')) {
+        return {
+            failure: `\`schema\` must not contain \`-->\`; got "${schemaPath}".`
+        };
+    }
     const mergeBase = await github.resolveMergeBase(pullRequest.baseSha, pullRequest.headSha);
     const [baseText, headText] = await Promise.all([
         github.readFile(schemaPath, mergeBase),
@@ -44752,23 +44885,30 @@ async function run({ inputs, pullRequest, github, summaryUrl }) {
     if (!report) {
         return {
             failure: `\`${schemaPath}\` does not exist at the merge-base (${shortSha(mergeBase)}) ` +
-                `or at the head commit (${shortSha(pullRequest.headSha)}). Check the \`schema\` input.`
+                `or at the head (${shortSha(pullRequest.headSha)}). Check the \`schema\` input.`
         };
     }
     const counts = countsOf(report);
     await github.writeSummary(render(report));
     const outcome = { outputs: counts };
-    if (pullRequest.fromFork) {
-        outcome.notice =
-            'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.';
+    if (pullRequest.readOnlyToken) {
+        outcome.notice = READ_ONLY_NOTICES[pullRequest.readOnlyToken];
     }
     else {
         const marker = stickyMarker(schemaPath);
-        const result = await github.upsertStickyComment({
-            marker,
-            body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl })}\n${marker}`,
-            createIfMissing: !(report.event === 'changed' && report.changes.length === 0)
-        });
+        let result;
+        try {
+            result = await github.upsertStickyComment({
+                marker,
+                body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl })}\n${marker}`,
+                createIfMissing: !(report.event === 'changed' && report.changes.length === 0)
+            });
+        }
+        catch (error) {
+            // The report and the outputs are already there; only the comment is lost.
+            outcome.failure = `Could not comment on the pull request: ${messageOf(error)}`;
+            return outcome;
+        }
         if (result === 'forbidden') {
             outcome.failure =
                 'Could not comment on the pull request: GitHub returned 403. ' +
@@ -44782,6 +44922,9 @@ async function run({ inputs, pullRequest, github, summaryUrl }) {
 /** The hidden marker that makes the comment sticky, one per schema file. */
 function stickyMarker(schemaPath) {
     return `<!-- cambium: schema=${schemaPath} -->`;
+}
+function messageOf(error) {
+    return error instanceof Error ? error.message : String(error);
 }
 function parseFailOn(value) {
     return FAIL_ON_VALUES.find((v) => v === value);
@@ -44801,7 +44944,7 @@ function buildReport(schemaPath, baseText, headText, mergeBase, headSha) {
         return { event: 'new-schema', schemaPath, inventory: inventoryOf(head) };
     }
     const base = loadSchema(baseText, schemaPath, {
-        label: 'merge-base',
+        label: 'base',
         sha: mergeBase
     });
     return { event: 'changed', schemaPath, changes: diffSchemas(base, head) };
@@ -44842,12 +44985,8 @@ async function main() {
                 schema: getInput('schema', { required: true }),
                 failOn: getInput('fail-on') || 'breaking'
             },
-            pullRequest: {
-                number: payload.number,
-                baseSha: payload.base.sha,
-                headSha: payload.head.sha,
-                fromFork: payload.head.repo?.full_name !== payload.base.repo.full_name
-            },
+            // The toolkit types everything under `pull_request` except `number` as `any`.
+            pullRequest: pullRequestFromPayload(payload),
             github: new OctokitGitHub(octokit, context.repo, payload.number),
             summaryUrl: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
         });
@@ -44862,8 +45001,7 @@ async function main() {
             setFailed(outcome.failure);
     }
     catch (error) {
-        if (error instanceof Error)
-            setFailed(error.message);
+        setFailed(error instanceof Error ? error.message : String(error));
     }
 }
 

@@ -20,7 +20,10 @@ export function findDeprecationChanges(
 ): Change[] {
   const changes: Change[] = []
   for (const path of deprecatablePaths(head)) {
-    const before = deprecationOf(resolvePath(base, path))
+    // An element born deprecated is already reported as added by graphql-js.
+    const inBase = resolvePath(base, path)
+    if (!inBase) continue
+    const before = deprecationOf(inBase)
     const after = deprecationOf(resolvePath(head, path))
     if (before === after) continue
     if (before === undefined) {
@@ -38,8 +41,7 @@ export function findDeprecationChanges(
         kind: 'DEPRECATION_REASON_CHANGED',
         path,
         before,
-        after,
-        text: after
+        after
       })
     }
   }

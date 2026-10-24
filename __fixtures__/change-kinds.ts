@@ -142,63 +142,63 @@ export const DANGEROUS_KINDS: ChangeKindFixture[] = [
     kind: 'VALUE_ADDED_TO_ENUM',
     base: 'enum OrderStatus { PAID }',
     head: 'enum OrderStatus { PAID REFUNDED }',
-    line: '`OrderStatus.REFUNDED` added to enum',
+    line: '`OrderStatus.REFUNDED` added to enum · clients that switch over `OrderStatus` may not handle it',
     counts: [0, 1, 0]
   },
   {
     kind: 'TYPE_ADDED_TO_UNION',
     base: 'type Query { r: Result } type A { x: Int } type B { y: Int } union Result = A',
     head: 'type Query { r: Result } type A { x: Int } type B { y: Int } union Result = A | B',
-    line: '`Result` union member `B` added',
+    line: '`Result` union member `B` added · clients that switch over `Result` may not handle it',
     counts: [0, 1, 0]
   },
   {
     kind: 'OPTIONAL_INPUT_FIELD_ADDED',
     base: 'input CreateUserInput { name: String }',
     head: 'input CreateUserInput { name: String, nickname: String }',
-    line: '`CreateUserInput.nickname` optional input field added',
+    line: '`CreateUserInput.nickname` optional input field added · existing calls now take its default',
     counts: [0, 1, 0]
   },
   {
     kind: 'OPTIONAL_ARG_ADDED',
     base: 'type Query { search(term: String): String }',
     head: 'type Query { search(term: String, sort: String): String }',
-    line: '`Query.search(sort:)` optional argument added',
+    line: '`Query.search(sort:)` optional argument added · existing calls now take its default',
     counts: [0, 1, 0]
   },
   {
     kind: 'IMPLEMENTED_INTERFACE_ADDED',
     base: 'interface Node { id: ID! } type User { id: ID! }',
     head: 'interface Node { id: ID! } type User implements Node { id: ID! }',
-    line: '`User` now implements `Node`',
+    line: '`User` now implements `Node` · fragments on `Node` now match this type',
     counts: [0, 1, 0]
   },
   {
     kind: 'ARG_DEFAULT_VALUE_CHANGE (changed)',
     base: 'type Query { search(limit: Int = 10): String }',
     head: 'type Query { search(limit: Int = 20): String }',
-    line: '`Query.search(limit:)` default changed from `10` to `20`',
+    line: '`Query.search(limit:)` default changed from `10` to `20` · callers that omit it now get the new value',
     counts: [0, 1, 0]
   },
   {
     kind: 'ARG_DEFAULT_VALUE_CHANGE (removed)',
     base: 'type Query { search(limit: Int = 10): String }',
     head: 'type Query { search(limit: Int): String }',
-    line: '`Query.search(limit:)` default `10` removed',
+    line: '`Query.search(limit:)` default `10` removed · callers that omit it now get the new value',
     counts: [0, 1, 0]
   },
   {
     kind: 'ARG_DEFAULT_VALUE_CHANGE (object literal with spaces)',
     base: 'input Filter { a: Int, b: String } type Query { search(filter: Filter = { a: 1 }): String }',
     head: 'input Filter { a: Int, b: String } type Query { search(filter: Filter = { a: 1, b: "x y" }): String }',
-    line: '`Query.search(filter:)` default changed from `{ a: 1 }` to `{ a: 1, b: "x y" }`',
+    line: '`Query.search(filter:)` default changed from `{ a: 1 }` to `{ a: 1, b: "x y" }` · callers that omit it now get the new value',
     counts: [0, 1, 0]
   },
   {
     kind: 'INPUT_FIELD_DEFAULT_VALUE_CHANGE',
     base: 'input Filter { limit: Int = 1 }',
     head: 'input Filter { limit: Int = 2 }',
-    line: '`Filter.limit` default changed from `1` to `2`',
+    line: '`Filter.limit` default changed from `1` to `2` · callers that omit it now get the new value',
     counts: [0, 1, 0]
   }
 ]
@@ -208,56 +208,56 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     kind: 'DESCRIPTION_CHANGED (type)',
     base: 'type User { id: ID! }',
     head: '"""A person with an account.""" type User { id: ID! }',
-    line: '`User` description changed: "A person with an account."',
+    line: '`User` description added: "A person with an account."',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (field)',
     base: 'type User { "Old" id: ID! }',
     head: 'type User { "Stable across renames" id: ID! }',
-    line: '`User.id` description changed: "Stable across renames"',
+    line: '`User.id` description changed from "Old" to "Stable across renames"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (removed)',
     base: 'type User { "Old" id: ID! }',
     head: 'type User { id: ID! }',
-    line: '`User.id` description removed',
+    line: '`User.id` description "Old" removed',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (enum value)',
     base: 'enum Role { ADMIN }',
     head: 'enum Role { "Can do anything" ADMIN }',
-    line: '`Role.ADMIN` description changed: "Can do anything"',
+    line: '`Role.ADMIN` description added: "Can do anything"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (input field)',
     base: 'input Filter { limit: Int }',
     head: 'input Filter { "Page size" limit: Int }',
-    line: '`Filter.limit` description changed: "Page size"',
+    line: '`Filter.limit` description added: "Page size"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (argument)',
     base: 'type Query { search(term: String): String }',
     head: 'type Query { search("Free text" term: String): String }',
-    line: '`Query.search(term:)` description changed: "Free text"',
+    line: '`Query.search(term:)` description added: "Free text"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (directive)',
     base: `${QUERY} directive @auth on FIELD_DEFINITION`,
     head: `${QUERY} "Requires a signed-in user" directive @auth on FIELD_DEFINITION`,
-    line: '`@auth` description changed: "Requires a signed-in user"',
+    line: '`@auth` description added: "Requires a signed-in user"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (directive argument)',
     base: `${QUERY} directive @auth(role: String) on FIELD_DEFINITION`,
     head: `${QUERY} directive @auth("Role name" role: String) on FIELD_DEFINITION`,
-    line: '`@auth(role:)` description changed: "Role name"',
+    line: '`@auth(role:)` description added: "Role name"',
     counts: [0, 0, 1]
   },
   {
@@ -268,7 +268,7 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     migrations, so clients may cache by it indefinitely without risk.
     """
     type User { id: ID! }`,
-    line: '`User` description changed: "The identifier of the user. It is stable across renames, merges and migrations…"',
+    line: '`User` description added: "The identifier of the user. It is stable across renames, merges and migrations…"',
     counts: [0, 0, 1]
   },
   {
@@ -429,7 +429,7 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     kind: 'DEPRECATION_REASON_CHANGED',
     base: 'type User { contact: String @deprecated(reason: "Gone soon") }',
     head: 'type User { contact: String @deprecated(reason: "Use `User.email`") }',
-    line: '`User.contact` deprecation reason changed: "Use `User.email`"',
+    line: '`User.contact` deprecation reason changed from "Gone soon" to "Use `User.email`"',
     counts: [0, 0, 1]
   }
 ]

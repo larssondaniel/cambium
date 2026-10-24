@@ -1,6 +1,7 @@
 import * as core from '@actions/core'
 import * as github from '@actions/github'
 import { OctokitGitHub } from './octokit-github.js'
+import { pullRequestFromPayload, type PullRequestPayload } from './payload.js'
 import { run } from './run.js'
 
 /**
@@ -27,12 +28,8 @@ export async function main(): Promise<void> {
         schema: core.getInput('schema', { required: true }),
         failOn: core.getInput('fail-on') || 'breaking'
       },
-      pullRequest: {
-        number: payload.number,
-        baseSha: payload.base.sha,
-        headSha: payload.head.sha,
-        fromFork: payload.head.repo?.full_name !== payload.base.repo.full_name
-      },
+      // The toolkit types everything under `pull_request` except `number` as `any`.
+      pullRequest: pullRequestFromPayload(payload as PullRequestPayload),
       github: new OctokitGitHub(octokit, context.repo, payload.number),
       summaryUrl: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
     })
@@ -45,6 +42,6 @@ export async function main(): Promise<void> {
     if (outcome.notice) core.notice(outcome.notice)
     if (outcome.failure) core.setFailed(outcome.failure)
   } catch (error) {
-    if (error instanceof Error) core.setFailed(error.message)
+    core.setFailed(error instanceof Error ? error.message : String(error))
   }
 }
