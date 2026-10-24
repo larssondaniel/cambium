@@ -1,8 +1,8 @@
 /**
  * The run seam: the orchestrator driven from the outside with an in-memory
  * fake of the GitHub port and fixture schema pairs. Assertions are what a
- * user would observe: the comment body, the summary body, the outputs and
- * the failure message.
+ * user would observe: the comment body, the summary body, the outputs, the
+ * failure message and the notices.
  */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from '@jest/globals'
@@ -30,12 +30,20 @@ interface Scenario {
   base?: string
   head?: string
   failOn?: string
+  /** The `accept-label` input; the action's default when omitted. */
+  acceptLabel?: string
+  /** Names of the labels on the pull request. */
+  labels?: string[]
+  labelsForbidden?: boolean
+  labelsError?: Error
   readOnlyToken?: 'fork' | 'dependabot'
   existingComment?: string
   forbidden?: 'read' | 'write'
   commentError?: Error
   schema?: string
 }
+
+const DEFAULT_ACCEPT_LABEL = 'schema-change-accepted'
 
 async function cambium(
   scenario: Scenario
@@ -48,8 +56,15 @@ async function cambium(
   github.existingComment = scenario.existingComment
   github.forbidden = scenario.forbidden ?? false
   github.commentError = scenario.commentError
+  github.labels = scenario.labels ?? []
+  github.labelsForbidden = scenario.labelsForbidden ?? false
+  github.labelsError = scenario.labelsError
   const outcome = await run({
-    inputs: { schema, failOn: scenario.failOn ?? 'breaking' },
+    inputs: {
+      schema,
+      failOn: scenario.failOn ?? 'breaking',
+      acceptLabel: scenario.acceptLabel ?? DEFAULT_ACCEPT_LABEL
+    },
     pullRequest: {
       number: 7,
       baseSha: BASE_SHA,
@@ -70,6 +85,28 @@ function visible(body: string | undefined): string | undefined {
 const example = {
   base: fixture('example/base.graphql'),
   head: fixture('example/head.graphql')
+}
+/** One dangerous change and nothing else. */
+const dangerousOnly = {
+  base: 'enum OrderStatus { PAID }',
+  head: 'enum OrderStatus { PAID REFUNDED }'
+}
+
+const FORK_NOTICE =
+  'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.'
+const DEPENDABOT_NOTICE =
+  'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
+const BEFORE_LINE =
+  'This check fails on breaking changes. Adding the label `schema-change-accepted` accepts them for this pull request.'
+const AFTER_LINE =
+  '1 breaking change is accepted for this pull request by the label `schema-change-accepted`, so the check passes.'
+const ACCEPTANCE_NOTICE =
+  '1 breaking change in `schema.graphql` accepted for this pull request by the label `schema-change-accepted`.'
+const V1_FAILURE = '1 breaking change in `schema.graphql` (fail-on: breaking).'
+
+/** True when the body carries a gate line of either kind. */
+function hasGateLine(body: string | undefined): boolean {
+  return /This check fails on|accepted for this pull request/.test(body ?? '')
 }
 const safeOnly = {
   base: fixture('safe-only/base.graphql'),
@@ -299,14 +336,9 @@ describe('the gate', () => {
   })
 
   it('lets dangerous changes through when fail-on is breaking', async () => {
-    const dangerous = {
-      base: 'enum OrderStatus { PAID }',
-      head: 'enum OrderStatus { PAID REFUNDED }'
-    }
-
-    expect((await cambium(dangerous)).outcome.failure).toBeUndefined()
+    expect((await cambium(dangerousOnly)).outcome.failure).toBeUndefined()
     expect(
-      (await cambium({ ...dangerous, failOn: 'dangerous' })).outcome.failure
+      (await cambium({ ...dangerousOnly, failOn: 'dangerous' })).outcome.failure
     ).toBe('1 dangerous change in `schema.graphql` (fail-on: dangerous).')
   })
 
@@ -329,9 +361,7 @@ describe('a pull request from a fork', () => {
 
     expect(github.comment).toBeUndefined()
     expect(github.summary).toContain('### Breaking schema change')
-    expect(outcome.notice).toBe(
-      'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.'
-    )
+    expect(outcome.notices).toEqual([FORK_NOTICE])
   })
 
   it('still applies the gate and sets outputs', async () => {
@@ -353,12 +383,292 @@ describe('a pull request opened by Dependabot', () => {
 
     expect(github.comment).toBeUndefined()
     expect(github.summary).toContain('### Breaking schema change')
-    expect(outcome.notice).toBe(
-      'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
-    )
+    expect(outcome.notices).toEqual([DEPENDABOT_NOTICE])
     expect(outcome.failure).toBe(
       '1 breaking change in `schema.graphql` (fail-on: breaking).'
     )
+    expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
+  })
+})
+
+describe('the acceptance label', () => {
+  const labelled = { ...example, labels: ['schema-change-accepted'] }
+
+  it('lets breaking changes through with a notice, and the comment says so', async () => {
+    const { outcome, github } = await cambium(labelled)
+
+    expect(outcome.failure).toBeUndefined()
+    expect(outcome.notices).toEqual([ACCEPTANCE_NOTICE])
+    expect(visible(github.comment?.body)).toMatchSnapshot()
+    expect(github.comment?.body).toContain(`\n\n${AFTER_LINE}\n\n<sub>`)
+    expect(github.summary).toContain(`\n\n${AFTER_LINE}\n\n<sub>`)
+    expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
+  })
+
+  it('counts what it accepted the way the failure message does', async () => {
+    const { outcome, github } = await cambium({
+      ...labelled,
+      failOn: 'dangerous'
+    })
+
+    expect(outcome.failure).toBeUndefined()
+    expect(outcome.notices).toEqual([
+      '1 breaking and 2 dangerous changes in `schema.graphql` accepted for this pull request by the label `schema-change-accepted`.'
+    ])
+    expect(github.comment?.body).toContain(
+      '1 breaking and 2 dangerous changes are accepted for this pull request by the label `schema-change-accepted`, so the check passes.'
+    )
+  })
+
+  it('accepts dangerous changes under fail-on: dangerous, in "dangerous" wording', async () => {
+    const { outcome, github } = await cambium({
+      ...dangerousOnly,
+      labels: ['schema-change-accepted'],
+      failOn: 'dangerous'
+    })
+
+    expect(outcome.failure).toBeUndefined()
+    expect(outcome.notices).toEqual([
+      '1 dangerous change in `schema.graphql` accepted for this pull request by the label `schema-change-accepted`.'
+    ])
+    expect(github.comment?.body).toContain(
+      '1 dangerous change is accepted for this pull request by the label `schema-change-accepted`, so the check passes.'
+    )
+  })
+
+  it('is inert when the gate would pass anyway: no gate line, no notice, no labels read', async () => {
+    const dangerous = await cambium({
+      ...dangerousOnly,
+      labels: ['schema-change-accepted']
+    })
+    expect(hasGateLine(dangerous.github.comment?.body)).toBe(false)
+    expect(dangerous.outcome.notices).toEqual([])
+    expect(dangerous.github.labelsRead).toBe(false)
+
+    const safe = await cambium({
+      ...safeOnly,
+      labels: ['schema-change-accepted']
+    })
+    expect(hasGateLine(safe.github.comment?.body)).toBe(false)
+    expect(safe.outcome.notices).toEqual([])
+    expect(safe.github.labelsRead).toBe(false)
+  })
+
+  it('names the label in the comment when it is absent, and fails as before', async () => {
+    const { outcome, github } = await cambium(example)
+
+    expect(outcome.failure).toBe(V1_FAILURE)
+    expect(outcome.notices).toEqual([])
+    expect(github.comment?.body).toContain(`\n\n${BEFORE_LINE}\n\n<sub>`)
+    expect(github.summary).toContain(`\n\n${BEFORE_LINE}\n\n<sub>`)
+    expect(github.labelsRead).toBe(true)
+  })
+
+  it('states the rule under fail-on: dangerous whatever the counts', async () => {
+    const { github } = await cambium({ ...dangerousOnly, failOn: 'dangerous' })
+
+    expect(github.comment?.body).toContain(
+      'This check fails on breaking and dangerous changes. Adding the label `schema-change-accepted` accepts them for this pull request.'
+    )
+  })
+
+  it('is off when accept-label is empty: the comment is exactly v1 and no labels are read', async () => {
+    const { outcome, github } = await cambium({ ...labelled, acceptLabel: '' })
+
+    expect(outcome.failure).toBe(V1_FAILURE)
+    expect(outcome.notices).toEqual([])
+    expect(hasGateLine(github.comment?.body)).toBe(false)
+    expect(github.labelsRead).toBe(false)
+    expect(visible(github.comment?.body)).toMatchSnapshot()
+
+    const blank = await cambium({ ...labelled, acceptLabel: '  \t ' })
+    expect(blank.github.comment?.body).toBe(github.comment?.body)
+    expect(blank.github.labelsRead).toBe(false)
+  })
+
+  it('matches the configured name trimmed and regardless of case', async () => {
+    const { outcome, github } = await cambium({
+      ...labelled,
+      acceptLabel: '  Schema-Change-Accepted '
+    })
+
+    expect(outcome.failure).toBeUndefined()
+    expect(outcome.notices).toEqual([
+      '1 breaking change in `schema.graphql` accepted for this pull request by the label `Schema-Change-Accepted`.'
+    ])
+    expect(github.comment?.body).toContain(
+      'by the label `Schema-Change-Accepted`'
+    )
+  })
+
+  it("matches the pull request's label regardless of its case too", async () => {
+    const { outcome } = await cambium({
+      ...example,
+      labels: ['bug', 'SCHEMA-CHANGE-ACCEPTED']
+    })
+
+    expect(outcome.failure).toBeUndefined()
+  })
+
+  it('names a custom label, as a team coming from GraphQL Inspector would use', async () => {
+    const absent = await cambium({
+      ...example,
+      acceptLabel: 'approved-breaking-change'
+    })
+    expect(absent.github.comment?.body).toContain(
+      'This check fails on breaking changes. Adding the label `approved-breaking-change` accepts them for this pull request.'
+    )
+
+    const present = await cambium({
+      ...example,
+      acceptLabel: 'approved-breaking-change',
+      labels: ['approved-breaking-change']
+    })
+    expect(present.outcome.failure).toBeUndefined()
+    expect(present.github.comment?.body).toContain(
+      '1 breaking change is accepted for this pull request by the label `approved-breaking-change`, so the check passes.'
+    )
+  })
+
+  it('renders a label name with a backtick through the code-span helper', async () => {
+    const { github } = await cambium({ ...example, acceptLabel: 'ok`ish' })
+
+    expect(github.comment?.body).toContain(
+      'Adding the label ``ok`ish`` accepts'
+    )
+  })
+
+  it('rejects a value with a comma or a newline before touching GitHub', async () => {
+    const comma = await cambium({
+      ...example,
+      acceptLabel: 'accepted, approved'
+    })
+    expect(comma.outcome.failure).toBe(
+      '`accept-label` takes one label name, without a comma or a newline; got "accepted, approved".'
+    )
+    expect(comma.outcome.outputs).toBeUndefined()
+    expect(comma.github.mergeBaseRequest).toBeUndefined()
+
+    const newline = await cambium({
+      ...example,
+      acceptLabel: 'accepted\napproved'
+    })
+    expect(newline.outcome.failure).toContain(
+      '`accept-label` takes one label name'
+    )
+    expect(newline.github.mergeBaseRequest).toBeUndefined()
+  })
+
+  it('never fails under fail-on: never, so there is no gate line and no labels read', async () => {
+    for (const labels of [['schema-change-accepted'], []]) {
+      const { outcome, github } = await cambium({
+        ...example,
+        failOn: 'never',
+        labels
+      })
+
+      expect(outcome.failure).toBeUndefined()
+      expect(outcome.notices).toEqual([])
+      expect(hasGateLine(github.comment?.body)).toBe(false)
+      expect(github.labelsRead).toBe(false)
+    }
+  })
+
+  it('has nothing to say about a new schema', async () => {
+    const { github } = await cambium({
+      head: example.head,
+      labels: ['schema-change-accepted']
+    })
+
+    expect(hasGateLine(github.comment?.body)).toBe(false)
+    expect(github.labelsRead).toBe(false)
+  })
+
+  it('accepts a removed schema, which counts as one breaking change', async () => {
+    const { outcome, github } = await cambium({
+      base: example.base,
+      labels: ['schema-change-accepted']
+    })
+
+    expect(outcome.failure).toBeUndefined()
+    expect(outcome.notices).toEqual([ACCEPTANCE_NOTICE])
+    expect(visible(github.comment?.body)).toMatchSnapshot()
+    expect(github.comment?.body).toContain(`\n\n${AFTER_LINE}\n\n<sub>`)
+  })
+
+  describe('on a pull request without a comment', () => {
+    it('passes a labelled fork pull request: summary with the after sentence, both notices, read-only first', async () => {
+      const { outcome, github } = await cambium({
+        ...labelled,
+        readOnlyToken: 'fork'
+      })
+
+      expect(github.comment).toBeUndefined()
+      expect(github.summary).toContain(`\n\n${AFTER_LINE}\n\n<sub>`)
+      expect(outcome.notices).toEqual([FORK_NOTICE, ACCEPTANCE_NOTICE])
+      expect(outcome.failure).toBeUndefined()
+      expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
+    })
+
+    it('names the label in the summary of an unlabelled fork pull request, and fails as before', async () => {
+      const { outcome, github } = await cambium({
+        ...example,
+        readOnlyToken: 'fork'
+      })
+
+      expect(github.comment).toBeUndefined()
+      expect(github.summary).toContain(`\n\n${BEFORE_LINE}\n\n<sub>`)
+      expect(outcome.notices).toEqual([FORK_NOTICE])
+      expect(outcome.failure).toBe(V1_FAILURE)
+    })
+
+    it('passes a labelled Dependabot pull request with both notices', async () => {
+      const { outcome } = await cambium({
+        ...labelled,
+        readOnlyToken: 'dependabot'
+      })
+
+      expect(outcome.notices).toEqual([DEPENDABOT_NOTICE, ACCEPTANCE_NOTICE])
+      expect(outcome.failure).toBeUndefined()
+    })
+  })
+
+  describe('when the labels cannot be read', () => {
+    it('reports as if the label were absent, then fails with the read error rather than the gate', async () => {
+      const { outcome, github } = await cambium({
+        ...labelled,
+        labelsError: new Error('Server Error (502)')
+      })
+
+      expect(github.summary).toContain(`\n\n${BEFORE_LINE}\n\n<sub>`)
+      expect(github.comment?.body).toContain(`\n\n${BEFORE_LINE}\n\n<sub>`)
+      expect(outcome.failure).toBe(
+        "Could not read the pull request's labels: Server Error (502)"
+      )
+      expect(outcome.notices).toEqual([])
+      expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
+    })
+
+    it('names the permission to add when GitHub returned 403', async () => {
+      const { outcome, github } = await cambium({
+        ...labelled,
+        labelsForbidden: true
+      })
+
+      expect(outcome.failure).toBe(
+        "Could not read the pull request's labels: GitHub returned 403. Add `pull-requests: read` or `issues: read` to the job's `permissions:` block."
+      )
+      expect(github.comment?.body).toContain(`\n\n${BEFORE_LINE}\n\n<sub>`)
+    })
+  })
+
+  it('never reaches the gate when the comment is forbidden', async () => {
+    const { outcome } = await cambium({ ...labelled, forbidden: 'write' })
+
+    expect(outcome.failure).toMatch(
+      /^Could not comment on the pull request: GitHub returned 403\./
+    )
+    expect(outcome.notices).toEqual([])
     expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
   })
 })

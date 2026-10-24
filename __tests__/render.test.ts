@@ -6,6 +6,7 @@
 import { describe, expect, it } from '@jest/globals'
 import type { Change, Severity } from '../src/diff/index.js'
 import { DangerousChangeType } from 'graphql'
+import type { Gate } from '../src/gate.js'
 import type { Report } from '../src/report.js'
 import { phrase, render } from '../src/render.js'
 
@@ -127,6 +128,87 @@ describe('the comment budget', () => {
   })
 })
 
+describe('the gate line', () => {
+  const mixed = report({ breaking: 1, dangerous: 2, safe: 3 })
+  const gate = (failOn: Gate['failOn'], accepted: boolean): Gate => ({
+    failOn,
+    acceptLabel: 'schema-change-accepted',
+    accepted
+  })
+  /** Budget one short of the full body, so lines are dropped and the truncation line appears. */
+  const truncating = (body: Report, options: Gate) =>
+    render(body, { gate: options }).length - 1
+
+  describe.each([
+    ['before the label', false],
+    ['after the label', true]
+  ])('%s', (_state, accepted) => {
+    it.each(['breaking', 'dangerous'] as const)(
+      'under fail-on: %s',
+      (failOn) => {
+        expect(
+          render(mixed, { gate: gate(failOn, accepted) })
+        ).toMatchSnapshot()
+      }
+    )
+
+    it.each(['breaking', 'dangerous'] as const)(
+      'under fail-on: %s, below the truncation line',
+      (failOn) => {
+        const body = render(mixed, {
+          gate: gate(failOn, accepted),
+          budget: truncating(mixed, gate(failOn, accepted)),
+          summaryUrl: 'https://github.com/acme/api/actions/runs/1'
+        })
+
+        expect(body).toMatchSnapshot()
+        expect(body).toMatch(
+          /\n\d+ more changes? not shown\. See the \[job summary\]\(https:\/\/github\.com\/acme\/api\/actions\/runs\/1\) for the full report\.\n\n(This check fails on|1 breaking and 2 dangerous changes are accepted|1 breaking change is accepted)/
+        )
+      }
+    )
+  })
+
+  it('is the last paragraph before the footer', () => {
+    expect(render(mixed, { gate: gate('breaking', false) })).toMatch(
+      /\n\nThis check fails on breaking changes\. Adding the label `schema-change-accepted` accepts them for this pull request\.\n\n<sub>Cambium/
+    )
+  })
+
+  it('survives a budget too small for the breaking lines, along with every breaking line', () => {
+    const many = report({ breaking: 40, safe: 2 })
+    const body = render(many, { gate: gate('breaking', false), budget: 100 })
+
+    for (const change of changes('breaking', 40))
+      expect(body).toContain(change.path)
+    expect(body).toContain('2 more changes not shown')
+    expect(body).toContain('Adding the label `schema-change-accepted`')
+  })
+
+  it('is absent when the gate would pass, when the label is off, and under fail-on: never', () => {
+    const line = /This check fails on|accepted for this pull request/
+    expect(render(mixed)).not.toMatch(line)
+    expect(
+      render(mixed, { gate: { failOn: 'breaking', accepted: true } })
+    ).not.toMatch(line)
+    expect(render(mixed, { gate: gate('never', false) })).not.toMatch(line)
+    expect(render(mixed, { gate: gate('never', true) })).not.toMatch(line)
+    expect(
+      render(report({ dangerous: 2, safe: 3 }), {
+        gate: gate('breaking', false)
+      })
+    ).not.toMatch(line)
+  })
+
+  it('wraps the label name in a code span that survives backticks', () => {
+    const body = render(mixed, {
+      gate: { failOn: 'breaking', acceptLabel: '`accepted`', accepted: false }
+    })
+
+    expect(body).toContain('Adding the label `` `accepted` `` accepts')
+  })
+})
+
 describe('whole-file events', () => {
   it('renders a new schema with its inventory', () => {
     expect(
@@ -150,6 +232,41 @@ describe('whole-file events', () => {
     expect(
       render({ event: 'schema-removed', schemaPath: 'schema.graphql' })
     ).toMatchSnapshot()
+  })
+
+  it('gives a removed schema a gate line and a new schema none', () => {
+    const gate: Gate = {
+      failOn: 'breaking',
+      acceptLabel: 'schema-change-accepted',
+      accepted: false
+    }
+
+    expect(
+      render(
+        { event: 'schema-removed', schemaPath: 'schema.graphql' },
+        { gate }
+      )
+    ).toContain(
+      '\n\nThis check fails on breaking changes. Adding the label `schema-change-accepted` accepts them for this pull request.\n\n<sub>'
+    )
+    expect(
+      render(
+        {
+          event: 'new-schema',
+          schemaPath: 'schema.graphql',
+          inventory: {
+            types: 1,
+            interfaces: 0,
+            unions: 0,
+            enums: 0,
+            inputTypes: 0,
+            scalars: 0,
+            directives: 0
+          }
+        },
+        { gate }
+      )
+    ).not.toContain('This check fails')
   })
 })
 

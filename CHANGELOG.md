@@ -6,6 +6,20 @@ All notable changes to Cambium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- An acceptance label. When the gate would fail and the pull request carries the
+  label named by the new `accept-label` input, `schema-change-accepted` by
+  default, the step passes and a notice says what was accepted and by which
+  label. The comment and the job summary end with a gate line whenever the gate
+  would fail: before the label it names the label to add; after, it says the
+  changes are accepted. The verdict, counts, sections and outputs are unchanged.
+  The label is read live on every run and remembered nowhere, so removing it
+  makes the next run fail again. The label is on by default under `@v1`;
+  `accept-label: ''` turns it off.
+- The README snippet lists `labeled` and `unlabeled` among the `pull_request`
+  activity types, so that adding or removing the label starts a run.
+
 ## [1.0.0] - 2026-10-24
 
 Cambium diffs a committed GraphQL schema between a pull request's merge-base and

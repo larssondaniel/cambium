@@ -10,7 +10,8 @@ Releases are made by hand; the floating major tag is moved by a workflow.
    artifact instead. Then commit and merge to `main`. The check-dist and
    check-screenshots workflows fail CI when either drifts.
 3. Draft a GitHub release with tag `vX.Y.Z`, tick **Publish this Action to
-   the GitHub Marketplace**, and choose the category **Code review**.
+   the GitHub Marketplace**, and choose the category **Code review**. The
+   form rejects an `action.yml` description of 125 characters or more.
 4. Publishing the release triggers
    [`move-major-tag.yml`](../.github/workflows/move-major-tag.yml), which
    force-moves the plain `v1` tag to the release commit.

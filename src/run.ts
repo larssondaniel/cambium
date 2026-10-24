@@ -1,4 +1,10 @@
 import { diffSchemas } from './diff/index.js'
+import {
+  FAIL_ON_VALUES,
+  offendingChanges,
+  type FailOn,
+  type Gate
+} from './gate.js'
 import type { GitHubPort, StickyCommentResult } from './github.js'
 import { countsOf, inventoryOf, type Counts, type Report } from './report.js'
 import { render } from './render.js'
@@ -9,6 +15,8 @@ export interface RunInputs {
   schema: string
   /** Severity at or above which the step fails: `breaking`, `dangerous` or `never`. */
   failOn: string
+  /** Name of the label that lets the gate pass for this pull request; empty turns it off. */
+  acceptLabel: string
 }
 
 export interface PullRequest {
@@ -35,18 +43,15 @@ export interface RunOutcome {
   outputs?: Counts
   /** Message the step fails with, when it fails. */
   failure?: string
-  /** A notice annotation to emit. */
-  notice?: string
+  /** Notice annotations to emit, in this order. */
+  notices: string[]
 }
-
-const FAIL_ON_VALUES = ['breaking', 'dangerous', 'never'] as const
 
 const READ_ONLY_NOTICES = {
   fork: 'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.',
   dependabot:
     'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
 } as const
-type FailOn = (typeof FAIL_ON_VALUES)[number]
 
 /** Comments above this length are truncated; GitHub's limit is 65,536 characters. */
 export const COMMENT_BUDGET = 60_000
@@ -59,8 +64,8 @@ export const PERMISSIONS_HINT = [
 
 /**
  * The orchestrator: resolves the merge-base, reads the schema file at both
- * commits, diffs, renders, writes the summary, posts the sticky comment when
- * it can, and applies the gate.
+ * commits, diffs, reads the labels when the gate would fail, renders, writes
+ * the summary, posts the sticky comment when it can, and applies the gate.
  */
 export async function run({
   inputs,
@@ -70,16 +75,21 @@ export async function run({
 }: RunOptions): Promise<RunOutcome> {
   const failOn = parseFailOn(inputs.failOn)
   if (!failOn) {
-    return {
-      failure: `\`fail-on\` must be one of ${FAIL_ON_VALUES.join(', ')}; got "${inputs.failOn}".`
-    }
+    return failed(
+      `\`fail-on\` must be one of ${FAIL_ON_VALUES.join(', ')}; got "${inputs.failOn}".`
+    )
+  }
+
+  const acceptLabel = inputs.acceptLabel.trim()
+  if (/[,\n]/.test(acceptLabel)) {
+    return failed(
+      `\`accept-label\` takes one label name, without a comma or a newline; got "${inputs.acceptLabel}".`
+    )
   }
 
   const schemaPath = inputs.schema
   if (schemaPath.includes('-->')) {
-    return {
-      failure: `\`schema\` must not contain \`-->\`; got "${schemaPath}".`
-    }
+    return failed(`\`schema\` must not contain \`-->\`; got "${schemaPath}".`)
   }
 
   const mergeBase = await github.resolveMergeBase(
@@ -101,30 +111,52 @@ export async function run({
       pullRequest.headSha
     )
   } catch (error) {
-    if (error instanceof SchemaFileError) return { failure: error.message }
+    if (error instanceof SchemaFileError) return failed(error.message)
     throw error
   }
   if (!report) {
-    return {
-      failure:
-        `\`${schemaPath}\` does not exist at the merge-base (${shortSha(mergeBase)}) ` +
+    return failed(
+      `\`${schemaPath}\` does not exist at the merge-base (${shortSha(mergeBase)}) ` +
         `or at the head (${shortSha(pullRequest.headSha)}). Check the \`schema\` input.`
-    }
+    )
   }
 
   const counts = countsOf(report)
-  await github.writeSummary(render(report))
+  const offending = offendingChanges(counts, failOn)
 
-  const outcome: RunOutcome = { outputs: counts }
+  // The labels are read live, and only when they could change the outcome.
+  // A failed read renders as label-absent and fails the step after the report
+  // is out, so it is never mistaken for an absent label.
+  const gate: Gate = { failOn, accepted: false }
+  let labelsFailure: string | undefined
+  if (offending && acceptLabel) {
+    gate.acceptLabel = acceptLabel
+    try {
+      const labels = await github.listLabels()
+      if (labels === 'forbidden') {
+        labelsFailure =
+          "Could not read the pull request's labels: GitHub returned 403. " +
+          "Add `pull-requests: read` or `issues: read` to the job's `permissions:` block."
+      } else {
+        gate.accepted = labels.some((name) => sameLabel(name, acceptLabel))
+      }
+    } catch (error) {
+      labelsFailure = `Could not read the pull request's labels: ${messageOf(error)}`
+    }
+  }
+
+  await github.writeSummary(render(report, { gate }))
+
+  const outcome: RunOutcome = { outputs: counts, notices: [] }
   if (pullRequest.readOnlyToken) {
-    outcome.notice = READ_ONLY_NOTICES[pullRequest.readOnlyToken]
+    outcome.notices.push(READ_ONLY_NOTICES[pullRequest.readOnlyToken])
   } else {
     const marker = stickyMarker(schemaPath)
     let result: StickyCommentResult
     try {
       result = await github.upsertStickyComment({
         marker,
-        body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl })}\n${marker}`,
+        body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl, gate })}\n${marker}`,
         createIfMissing: !(
           report.event === 'changed' && report.changes.length === 0
         )
@@ -142,7 +174,20 @@ export async function run({
     }
   }
 
-  outcome.failure = gate(counts, failOn, schemaPath)
+  if (labelsFailure) {
+    outcome.failure = labelsFailure
+    return outcome
+  }
+
+  if (!offending) return outcome
+  const where = `${offending.phrase} in \`${schemaPath}\``
+  if (gate.accepted) {
+    outcome.notices.push(
+      `${where} accepted for this pull request by the label \`${acceptLabel}\`.`
+    )
+  } else {
+    outcome.failure = `${where} (fail-on: ${failOn}).`
+  }
   return outcome
 }
 
@@ -151,12 +196,21 @@ export function stickyMarker(schemaPath: string): string {
   return `<!-- cambium: schema=${schemaPath} -->`
 }
 
+function failed(failure: string): RunOutcome {
+  return { failure, notices: [] }
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
 function parseFailOn(value: string): FailOn | undefined {
   return FAIL_ON_VALUES.find((v) => v === value)
+}
+
+/** GitHub looks labels up case-insensitively and stores the case as typed, so the match ignores case. */
+function sameLabel(name: string, acceptLabel: string): boolean {
+  return name.trim().toLowerCase() === acceptLabel.toLowerCase()
 }
 
 /**
@@ -183,26 +237,4 @@ function buildReport(
     sha: mergeBase
   })
   return { event: 'changed', schemaPath, changes: diffSchemas(base, head) }
-}
-
-function gate(
-  counts: Counts,
-  failOn: FailOn,
-  schemaPath: string
-): string | undefined {
-  const gated =
-    failOn === 'breaking'
-      ? { breaking: counts.breaking }
-      : failOn === 'dangerous'
-        ? { breaking: counts.breaking, dangerous: counts.dangerous }
-        : {}
-  const offending = Object.entries(gated).filter(([, n]) => n > 0)
-  if (offending.length === 0) return undefined
-
-  const total = offending.reduce((sum, [, n]) => sum + n, 0)
-  const described = offending
-    .map(([severity, n]) => `${n} ${severity}`)
-    .join(' and ')
-  const noun = total === 1 ? 'change' : 'changes'
-  return `${described} ${noun} in \`${schemaPath}\` (fail-on: ${failOn}).`
 }

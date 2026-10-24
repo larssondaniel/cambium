@@ -1,5 +1,5 @@
 /**
- * The GitHub port: the four operations Cambium needs from GitHub, with no
+ * The GitHub port: the five operations Cambium needs from GitHub, with no
  * logic beyond them. The Octokit adapter implements it for real runs and an
  * in-memory fake implements it for tests.
  */
@@ -32,4 +32,9 @@ export interface GitHubPort {
   ): Promise<StickyCommentResult>
   /** Append markdown to the step's job summary. */
   writeSummary(markdown: string): Promise<void>
+  /**
+   * The names of the labels on the pull request, read live rather than from
+   * the event payload, or `forbidden` when the token cannot read them.
+   */
+  listLabels(): Promise<string[] | 'forbidden'>
 }

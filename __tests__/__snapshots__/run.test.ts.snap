@@ -38,6 +38,8 @@ exports[`a pull request that changes the schema posts the comment: verdict, coun
 
 </details>
 
+This check fails on breaking changes. Adding the label \`schema-change-accepted\` accepts them for this pull request.
+
 <sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
 `;
 
@@ -65,6 +67,76 @@ exports[`an absent or unparsable schema file reports a removed schema as breakin
 1 breaking · 0 dangerous · 0 safe
 
 \`schema.graphql\` exists at the merge-base and is absent at the head.
+
+This check fails on breaking changes. Adding the label \`schema-change-accepted\` accepts them for this pull request.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the acceptance label accepts a removed schema, which counts as one breaking change 1`] = `
+"### Schema removed
+
+1 breaking · 0 dangerous · 0 safe
+
+\`schema.graphql\` exists at the merge-base and is absent at the head.
+
+1 breaking change is accepted for this pull request by the label \`schema-change-accepted\`, so the check passes.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the acceptance label is off when accept-label is empty: the comment is exactly v1 and no labels are read 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 5 safe
+
+#### Breaking
+
+- \`Query.orders(status:)\` changed type from \`OrderStatus\` to \`OrderStatus!\`
+
+#### Dangerous
+
+- \`OrderStatus.REFUNDED\` added to enum · clients that switch over \`OrderStatus\` may not handle it
+- \`Query.search(sort:)\` optional argument added · existing calls now take its default
+
+<details><summary>5 safe changes</summary>
+
+- \`Invoice\` type added
+- \`Order.invoice\` added
+- \`Query.invoices\` added
+- \`User.displayName\` added
+- \`User.email\` deprecated: "Use \`User.contact.email\`"
+
+</details>
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the acceptance label lets breaking changes through with a notice, and the comment says so 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 5 safe
+
+#### Breaking
+
+- \`Query.orders(status:)\` changed type from \`OrderStatus\` to \`OrderStatus!\`
+
+#### Dangerous
+
+- \`OrderStatus.REFUNDED\` added to enum · clients that switch over \`OrderStatus\` may not handle it
+- \`Query.search(sort:)\` optional argument added · existing calls now take its default
+
+<details><summary>5 safe changes</summary>
+
+- \`Invoice\` type added
+- \`Order.invoice\` added
+- \`Query.invoices\` added
+- \`User.displayName\` added
+- \`User.email\` deprecated: "Use \`User.contact.email\`"
+
+</details>
+
+1 breaking change is accepted for this pull request by the label \`schema-change-accepted\`, so the check passes.
 
 <sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
 `;

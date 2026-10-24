@@ -1,7 +1,9 @@
 import type { Change } from './diff/index.js'
+import { gatedSeverities, offendingChanges, type Gate } from './gate.js'
 import {
   countsOf,
   verdictOf,
+  type Counts,
   type Report,
   type SchemaInventory
 } from './report.js'
@@ -15,6 +17,11 @@ export interface RenderOptions {
   budget?: number
   /** Where the untruncated report lives, for the pointer that follows dropped lines. */
   summaryUrl?: string
+  /**
+   * The gate, for the gate line at the foot. Omit it, or configure no
+   * acceptance label, and no gate line is rendered.
+   */
+  gate?: Gate
 }
 
 const REPO_URL = 'https://github.com/larssondaniel/cambium'
@@ -28,7 +35,8 @@ const QUOTE_LIMIT = 80
  * (with a budget) and the job summary (without one).
  */
 export function render(report: Report, options: RenderOptions = {}): string {
-  if (report.event !== 'changed') return renderWholeFileEvent(report)
+  if (report.event !== 'changed')
+    return renderWholeFileEvent(report, options.gate)
 
   const droppable = report.changes.filter(
     (c) => c.severity !== 'breaking'
@@ -94,7 +102,7 @@ function renderChanges(
     )
   }
   if (dropped > 0) blocks.push(omitted(dropped, options.summaryUrl))
-  blocks.push(FOOTER)
+  blocks.push(...gateLine(counts, options.gate), FOOTER)
   return blocks.join('\n\n')
 }
 
@@ -117,8 +125,32 @@ function omitted(count: number, summaryUrl: string | undefined): string {
   return `${count} more ${noun} not shown. See the ${summary} for the full report.`
 }
 
+/**
+ * The gate line: one paragraph above the footer, only when the gate would
+ * fail on the report and an acceptance label is configured. Before the
+ * label it states the rule and names the label; after, it states what was
+ * accepted. Zero or one element, so it splices into a block list.
+ */
+function gateLine(counts: Counts, gate: Gate | undefined): string[] {
+  if (!gate?.acceptLabel) return []
+  const offending = offendingChanges(counts, gate.failOn)
+  if (!offending) return []
+  const label = code(gate.acceptLabel)
+  if (gate.accepted) {
+    const verb = offending.total === 1 ? 'is' : 'are'
+    return [
+      `${offending.phrase} ${verb} accepted for this pull request by the label ${label}, so the check passes.`
+    ]
+  }
+  const rule = gatedSeverities(gate.failOn).join(' and ')
+  return [
+    `This check fails on ${rule} changes. Adding the label ${label} accepts them for this pull request.`
+  ]
+}
+
 function renderWholeFileEvent(
-  report: Extract<Report, { event: 'new-schema' | 'schema-removed' }>
+  report: Extract<Report, { event: 'new-schema' | 'schema-removed' }>,
+  gate: Gate | undefined
 ): string {
   const title = `### ${verdictOf(report)}`
   const file = `\`${report.schemaPath}\``
@@ -134,6 +166,7 @@ function renderWholeFileEvent(
     title,
     '1 breaking · 0 dangerous · 0 safe',
     `${file} exists at the merge-base and is absent at the head.`,
+    ...gateLine(countsOf(report), gate),
     FOOTER
   ].join('\n\n')
 }

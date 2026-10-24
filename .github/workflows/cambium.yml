@@ -1,11 +1,13 @@
 # Cambium runs on its own pull requests against a fixture schema, so that the
 # Octokit adapter is proven end to end and the README shows a real comment.
 # The fixture exists to be changed: a pull request that edits
-# dogfood/schema.graphql gets a comment describing the edit.
+# dogfood/schema.graphql gets a comment describing the edit, and one that
+# breaks it fails until the schema-change-accepted label is added.
 name: Cambium
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,8 +34,6 @@ jobs:
         uses: ./
         with:
           schema: dogfood/schema.graphql
-          # Dogfood pull requests break the fixture on purpose.
-          fail-on: never
 
       - name: Print outputs
         id: outputs

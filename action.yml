@@ -1,7 +1,7 @@
 name: 'Cambium: GraphQL schema diff'
-description:
-  Diffs a committed GraphQL schema between a pull request's merge-base and head,
-  and reports breaking, dangerous and safe changes in one PR comment.
+description: >-
+  Diffs a committed GraphQL schema across a pull request and posts one comment:
+  what breaks, what might, and what is safe.
 author: Daniel Larsson
 
 branding:
@@ -19,6 +19,12 @@ inputs:
       or `never`.
     required: false
     default: breaking
+  accept-label:
+    description:
+      Label that lets the check pass for one pull request when the gate would
+      fail. Empty disables it.
+    required: false
+    default: schema-change-accepted
   github-token:
     description:
       Token used to read the schema file and post the comment. Defaults to the

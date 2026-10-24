@@ -156,6 +156,198 @@ exports[`the comment budget drops lines from the bottom, safe first, then danger
 <sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
 `;
 
+exports[`the gate line after the label under fail-on: breaking 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+<details><summary>3 safe changes</summary>
+
+- \`SafeType.field000\` added
+- \`SafeType.field001\` added
+- \`SafeType.field002\` added
+
+</details>
+
+1 breaking change is accepted for this pull request by the label \`schema-change-accepted\`, so the check passes.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the gate line after the label under fail-on: breaking, below the truncation line 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+3 more changes not shown. See the [job summary](https://github.com/acme/api/actions/runs/1) for the full report.
+
+1 breaking change is accepted for this pull request by the label \`schema-change-accepted\`, so the check passes.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the gate line after the label under fail-on: dangerous 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+<details><summary>3 safe changes</summary>
+
+- \`SafeType.field000\` added
+- \`SafeType.field001\` added
+- \`SafeType.field002\` added
+
+</details>
+
+1 breaking and 2 dangerous changes are accepted for this pull request by the label \`schema-change-accepted\`, so the check passes.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the gate line after the label under fail-on: dangerous, below the truncation line 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+3 more changes not shown. See the [job summary](https://github.com/acme/api/actions/runs/1) for the full report.
+
+1 breaking and 2 dangerous changes are accepted for this pull request by the label \`schema-change-accepted\`, so the check passes.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the gate line before the label under fail-on: breaking 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+<details><summary>3 safe changes</summary>
+
+- \`SafeType.field000\` added
+- \`SafeType.field001\` added
+- \`SafeType.field002\` added
+
+</details>
+
+This check fails on breaking changes. Adding the label \`schema-change-accepted\` accepts them for this pull request.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the gate line before the label under fail-on: breaking, below the truncation line 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+3 more changes not shown. See the [job summary](https://github.com/acme/api/actions/runs/1) for the full report.
+
+This check fails on breaking changes. Adding the label \`schema-change-accepted\` accepts them for this pull request.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the gate line before the label under fail-on: dangerous 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+<details><summary>3 safe changes</summary>
+
+- \`SafeType.field000\` added
+- \`SafeType.field001\` added
+- \`SafeType.field002\` added
+
+</details>
+
+This check fails on breaking and dangerous changes. Adding the label \`schema-change-accepted\` accepts them for this pull request.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
+exports[`the gate line before the label under fail-on: dangerous, below the truncation line 1`] = `
+"### Breaking schema change
+
+1 breaking · 2 dangerous · 3 safe
+
+#### Breaking
+
+- \`BreakingType.field000\` removed
+
+#### Dangerous
+
+- \`DangerousType.field000\` added to enum · clients that switch over \`DangerousType\` may not handle it
+- \`DangerousType.field001\` added to enum · clients that switch over \`DangerousType\` may not handle it
+
+3 more changes not shown. See the [job summary](https://github.com/acme/api/actions/runs/1) for the full report.
+
+This check fails on breaking and dangerous changes. Adding the label \`schema-change-accepted\` accepts them for this pull request.
+
+<sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
+`;
+
 exports[`whole-file events renders a new schema with its inventory 1`] = `
 "### New schema
 

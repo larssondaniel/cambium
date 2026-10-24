@@ -11,7 +11,7 @@ type Octokit = ReturnType<typeof getOctokit>
 /**
  * The GitHub port implemented with Octokit. Thin by design: it maps calls and
  * turns two HTTP statuses into port vocabulary (404 on a file is "absent",
- * 403 on a comment is "forbidden"). It is proven by the repository's own
+ * 403 on a comment or on the labels is "forbidden"). It is proven by the repository's own
  * dogfooding workflow, not by unit tests.
  */
 export class OctokitGitHub implements GitHubPort {
@@ -88,6 +88,25 @@ export class OctokitGitHub implements GitHubPort {
         body
       })
       return 'created'
+    } catch (error) {
+      if (statusOf(error) === 403) return 'forbidden'
+      throw error
+    }
+  }
+
+  async listLabels(): Promise<string[] | 'forbidden'> {
+    try {
+      // Pull requests are issues to the labels endpoint, which reads with
+      // either `issues: read` or `pull-requests: read`.
+      const labels = await this.octokit.paginate(
+        this.octokit.rest.issues.listLabelsOnIssue,
+        {
+          ...this.repo,
+          issue_number: this.pullNumber,
+          per_page: 100
+        }
+      )
+      return labels.map((label) => label.name)
     } catch (error) {
       if (statusOf(error) === 403) return 'forbidden'
       throw error

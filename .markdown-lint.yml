@@ -11,6 +11,11 @@ MD013: false
 # Inline HTML: the README shows the comment's <details> and <sub> markup.
 MD033: false
 
+# Duplicate headings: Keep a Changelog repeats "Added" and the other section
+# headings under every version.
+MD024:
+  siblings_only: true
+
 # Ordered list item prefix: all ones, or counting up
 MD029:
   style: one_or_ordered

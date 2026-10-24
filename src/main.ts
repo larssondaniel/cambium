@@ -26,7 +26,10 @@ export async function main(): Promise<void> {
     const outcome = await run({
       inputs: {
         schema: core.getInput('schema', { required: true }),
-        failOn: core.getInput('fail-on') || 'breaking'
+        failOn: core.getInput('fail-on') || 'breaking',
+        // No fallback: the action.yml default is the only defaulting, so an
+        // explicit empty string reaches the run as empty and turns the label off.
+        acceptLabel: core.getInput('accept-label')
       },
       // The toolkit types everything under `pull_request` except `number` as `any`.
       pullRequest: pullRequestFromPayload(payload as PullRequestPayload),
@@ -39,7 +42,7 @@ export async function main(): Promise<void> {
       core.setOutput('dangerous-count', outcome.outputs.dangerous)
       core.setOutput('safe-count', outcome.outputs.safe)
     }
-    if (outcome.notice) core.notice(outcome.notice)
+    for (const notice of outcome.notices ?? []) core.notice(notice)
     if (outcome.failure) core.setFailed(outcome.failure)
   } catch (error) {
     core.setFailed(error instanceof Error ? error.message : String(error))

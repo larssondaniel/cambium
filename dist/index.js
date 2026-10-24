@@ -34414,7 +34414,7 @@ var github = /*#__PURE__*/Object.freeze({
 /**
  * The GitHub port implemented with Octokit. Thin by design: it maps calls and
  * turns two HTTP statuses into port vocabulary (404 on a file is "absent",
- * 403 on a comment is "forbidden"). It is proven by the repository's own
+ * 403 on a comment or on the labels is "forbidden"). It is proven by the repository's own
  * dogfooding workflow, not by unit tests.
  */
 class OctokitGitHub {
@@ -34482,6 +34482,23 @@ class OctokitGitHub {
                 body
             });
             return 'created';
+        }
+        catch (error) {
+            if (statusOf(error) === 403)
+                return 'forbidden';
+            throw error;
+        }
+    }
+    async listLabels() {
+        try {
+            // Pull requests are issues to the labels endpoint, which reads with
+            // either `issues: read` or `pull-requests: read`.
+            const labels = await this.octokit.paginate(this.octokit.rest.issues.listLabelsOnIssue, {
+                ...this.repo,
+                issue_number: this.pullNumber,
+                per_page: 100
+            });
+            return labels.map((label) => label.name);
         }
         catch (error) {
             if (statusOf(error) === 403)
@@ -44447,6 +44464,35 @@ function diffSchemas(base, head) {
     ].sort(compareChanges);
 }
 
+const FAIL_ON_VALUES = ['breaking', 'dangerous', 'never'];
+/** The severities the gate fails on, worst first; none under `never`. */
+function gatedSeverities(failOn) {
+    switch (failOn) {
+        case 'breaking':
+            return ['breaking'];
+        case 'dangerous':
+            return ['breaking', 'dangerous'];
+        case 'never':
+            return [];
+    }
+}
+/**
+ * The changes at or above the gate, counted the way the failure message
+ * counts them: "1 breaking change", "1 breaking and 2 dangerous changes".
+ * Undefined when there are none, which is when the gate passes on its own.
+ */
+function offendingChanges(counts, failOn) {
+    const severities = gatedSeverities(failOn).filter((s) => counts[s] > 0);
+    if (severities.length === 0)
+        return undefined;
+    const total = severities.reduce((sum, s) => sum + counts[s], 0);
+    const described = severities.map((s) => `${counts[s]} ${s}`).join(' and ');
+    return {
+        phrase: `${described} ${total === 1 ? 'change' : 'changes'}`,
+        total
+    };
+}
+
 /** How many changes of each severity the report carries; a removed schema counts as one breaking change. */
 function countsOf(report) {
     switch (report.event) {
@@ -44524,7 +44570,7 @@ const QUOTE_LIMIT = 80;
  */
 function render(report, options = {}) {
     if (report.event !== 'changed')
-        return renderWholeFileEvent(report);
+        return renderWholeFileEvent(report, options.gate);
     const droppable = report.changes.filter((c) => c.severity !== 'breaking').length;
     const dropped = options.budget
         ? smallestFit((n) => renderChanges(report, n, options).length <= options.budget, droppable)
@@ -44574,7 +44620,7 @@ function renderChanges(report, dropped, options) {
     }
     if (dropped > 0)
         blocks.push(omitted(dropped, options.summaryUrl));
-    blocks.push(FOOTER);
+    blocks.push(...gateLine(counts, options.gate), FOOTER);
     return blocks.join('\n\n');
 }
 function section(heading, changes) {
@@ -44592,7 +44638,31 @@ function omitted(count, summaryUrl) {
     const noun = count === 1 ? 'change' : 'changes';
     return `${count} more ${noun} not shown. See the ${summary} for the full report.`;
 }
-function renderWholeFileEvent(report) {
+/**
+ * The gate line: one paragraph above the footer, only when the gate would
+ * fail on the report and an acceptance label is configured. Before the
+ * label it states the rule and names the label; after, it states what was
+ * accepted. Zero or one element, so it splices into a block list.
+ */
+function gateLine(counts, gate) {
+    if (!gate?.acceptLabel)
+        return [];
+    const offending = offendingChanges(counts, gate.failOn);
+    if (!offending)
+        return [];
+    const label = code(gate.acceptLabel);
+    if (gate.accepted) {
+        const verb = offending.total === 1 ? 'is' : 'are';
+        return [
+            `${offending.phrase} ${verb} accepted for this pull request by the label ${label}, so the check passes.`
+        ];
+    }
+    const rule = gatedSeverities(gate.failOn).join(' and ');
+    return [
+        `This check fails on ${rule} changes. Adding the label ${label} accepts them for this pull request.`
+    ];
+}
+function renderWholeFileEvent(report, gate) {
     const title = `### ${verdictOf(report)}`;
     const file = `\`${report.schemaPath}\``;
     if (report.event === 'new-schema') {
@@ -44607,6 +44677,7 @@ function renderWholeFileEvent(report) {
         title,
         '1 breaking · 0 dangerous · 0 safe',
         `${file} exists at the merge-base and is absent at the head.`,
+        ...gateLine(countsOf(report), gate),
         FOOTER
     ].join('\n\n');
 }
@@ -44838,7 +44909,6 @@ function shortSha(sha) {
     return sha.slice(0, 7);
 }
 
-const FAIL_ON_VALUES = ['breaking', 'dangerous', 'never'];
 const READ_ONLY_NOTICES = {
     fork: 'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.',
     dependabot: 'This pull request was opened by Dependabot, whose token is read-only, so Cambium cannot comment on it. The report is in the job summary.'
@@ -44852,21 +44922,21 @@ const PERMISSIONS_HINT = [
 ].join('\n');
 /**
  * The orchestrator: resolves the merge-base, reads the schema file at both
- * commits, diffs, renders, writes the summary, posts the sticky comment when
- * it can, and applies the gate.
+ * commits, diffs, reads the labels when the gate would fail, renders, writes
+ * the summary, posts the sticky comment when it can, and applies the gate.
  */
 async function run({ inputs, pullRequest, github, summaryUrl }) {
     const failOn = parseFailOn(inputs.failOn);
     if (!failOn) {
-        return {
-            failure: `\`fail-on\` must be one of ${FAIL_ON_VALUES.join(', ')}; got "${inputs.failOn}".`
-        };
+        return failed(`\`fail-on\` must be one of ${FAIL_ON_VALUES.join(', ')}; got "${inputs.failOn}".`);
+    }
+    const acceptLabel = inputs.acceptLabel.trim();
+    if (/[,\n]/.test(acceptLabel)) {
+        return failed(`\`accept-label\` takes one label name, without a comma or a newline; got "${inputs.acceptLabel}".`);
     }
     const schemaPath = inputs.schema;
     if (schemaPath.includes('-->')) {
-        return {
-            failure: `\`schema\` must not contain \`-->\`; got "${schemaPath}".`
-        };
+        return failed(`\`schema\` must not contain \`-->\`; got "${schemaPath}".`);
     }
     const mergeBase = await github.resolveMergeBase(pullRequest.baseSha, pullRequest.headSha);
     const [baseText, headText] = await Promise.all([
@@ -44879,20 +44949,41 @@ async function run({ inputs, pullRequest, github, summaryUrl }) {
     }
     catch (error) {
         if (error instanceof SchemaFileError)
-            return { failure: error.message };
+            return failed(error.message);
         throw error;
     }
     if (!report) {
-        return {
-            failure: `\`${schemaPath}\` does not exist at the merge-base (${shortSha(mergeBase)}) ` +
-                `or at the head (${shortSha(pullRequest.headSha)}). Check the \`schema\` input.`
-        };
+        return failed(`\`${schemaPath}\` does not exist at the merge-base (${shortSha(mergeBase)}) ` +
+            `or at the head (${shortSha(pullRequest.headSha)}). Check the \`schema\` input.`);
     }
     const counts = countsOf(report);
-    await github.writeSummary(render(report));
-    const outcome = { outputs: counts };
+    const offending = offendingChanges(counts, failOn);
+    // The labels are read live, and only when they could change the outcome.
+    // A failed read renders as label-absent and fails the step after the report
+    // is out, so it is never mistaken for an absent label.
+    const gate = { failOn, accepted: false };
+    let labelsFailure;
+    if (offending && acceptLabel) {
+        gate.acceptLabel = acceptLabel;
+        try {
+            const labels = await github.listLabels();
+            if (labels === 'forbidden') {
+                labelsFailure =
+                    "Could not read the pull request's labels: GitHub returned 403. " +
+                        "Add `pull-requests: read` or `issues: read` to the job's `permissions:` block.";
+            }
+            else {
+                gate.accepted = labels.some((name) => sameLabel(name, acceptLabel));
+            }
+        }
+        catch (error) {
+            labelsFailure = `Could not read the pull request's labels: ${messageOf(error)}`;
+        }
+    }
+    await github.writeSummary(render(report, { gate }));
+    const outcome = { outputs: counts, notices: [] };
     if (pullRequest.readOnlyToken) {
-        outcome.notice = READ_ONLY_NOTICES[pullRequest.readOnlyToken];
+        outcome.notices.push(READ_ONLY_NOTICES[pullRequest.readOnlyToken]);
     }
     else {
         const marker = stickyMarker(schemaPath);
@@ -44900,7 +44991,7 @@ async function run({ inputs, pullRequest, github, summaryUrl }) {
         try {
             result = await github.upsertStickyComment({
                 marker,
-                body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl })}\n${marker}`,
+                body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl, gate })}\n${marker}`,
                 createIfMissing: !(report.event === 'changed' && report.changes.length === 0)
             });
         }
@@ -44916,18 +45007,37 @@ async function run({ inputs, pullRequest, github, summaryUrl }) {
             return outcome;
         }
     }
-    outcome.failure = gate(counts, failOn, schemaPath);
+    if (labelsFailure) {
+        outcome.failure = labelsFailure;
+        return outcome;
+    }
+    if (!offending)
+        return outcome;
+    const where = `${offending.phrase} in \`${schemaPath}\``;
+    if (gate.accepted) {
+        outcome.notices.push(`${where} accepted for this pull request by the label \`${acceptLabel}\`.`);
+    }
+    else {
+        outcome.failure = `${where} (fail-on: ${failOn}).`;
+    }
     return outcome;
 }
 /** The hidden marker that makes the comment sticky, one per schema file. */
 function stickyMarker(schemaPath) {
     return `<!-- cambium: schema=${schemaPath} -->`;
 }
+function failed(failure) {
+    return { failure, notices: [] };
+}
 function messageOf(error) {
     return error instanceof Error ? error.message : String(error);
 }
 function parseFailOn(value) {
     return FAIL_ON_VALUES.find((v) => v === value);
+}
+/** GitHub looks labels up case-insensitively and stores the case as typed, so the match ignores case. */
+function sameLabel(name, acceptLabel) {
+    return name.trim().toLowerCase() === acceptLabel.toLowerCase();
 }
 /**
  * Applies the absent-file rules. Returns `undefined` when the file is absent
@@ -44949,22 +45059,6 @@ function buildReport(schemaPath, baseText, headText, mergeBase, headSha) {
     });
     return { event: 'changed', schemaPath, changes: diffSchemas(base, head) };
 }
-function gate(counts, failOn, schemaPath) {
-    const gated = failOn === 'breaking'
-        ? { breaking: counts.breaking }
-        : failOn === 'dangerous'
-            ? { breaking: counts.breaking, dangerous: counts.dangerous }
-            : {};
-    const offending = Object.entries(gated).filter(([, n]) => n > 0);
-    if (offending.length === 0)
-        return undefined;
-    const total = offending.reduce((sum, [, n]) => sum + n, 0);
-    const described = offending
-        .map(([severity, n]) => `${n} ${severity}`)
-        .join(' and ');
-    const noun = total === 1 ? 'change' : 'changes';
-    return `${described} ${noun} in \`${schemaPath}\` (fail-on: ${failOn}).`;
-}
 
 /**
  * Wires the action to the runner: reads inputs and the pull request from the
@@ -44983,7 +45077,10 @@ async function main() {
         const outcome = await run({
             inputs: {
                 schema: getInput('schema', { required: true }),
-                failOn: getInput('fail-on') || 'breaking'
+                failOn: getInput('fail-on') || 'breaking',
+                // No fallback: the action.yml default is the only defaulting, so an
+                // explicit empty string reaches the run as empty and turns the label off.
+                acceptLabel: getInput('accept-label')
             },
             // The toolkit types everything under `pull_request` except `number` as `any`.
             pullRequest: pullRequestFromPayload(payload),
@@ -44995,8 +45092,8 @@ async function main() {
             setOutput('dangerous-count', outcome.outputs.dangerous);
             setOutput('safe-count', outcome.outputs.safe);
         }
-        if (outcome.notice)
-            notice(outcome.notice);
+        for (const notice$1 of outcome.notices ?? [])
+            notice(notice$1);
         if (outcome.failure)
             setFailed(outcome.failure);
     }

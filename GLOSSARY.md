@@ -52,6 +52,24 @@ _Avoid_: bot comment, report, status comment
 The dotted name that locates a change: `Type`, `Type.field`, `Type.field(arg:)`, `Enum.VALUE`, or `@directive`.
 _Avoid_: coordinate, location, selector
 
+## Gate
+
+**Gate**:
+The rule that fails the step when any change at or above the `fail-on` severity exists, so that Cambium can be a required check. The gate decides the step's outcome, never the verdict, counts or sections.
+_Avoid_: threshold, policy, blocker, check rule
+
+**Acceptance label**:
+The label, named by the `accept-label` input and `schema-change-accepted` by default, that a person adds to a pull request so the gate passes for that pull request alone. It is read live on every run and remembered nowhere.
+_Avoid_: override label, approval label, bypass label, skip label
+
+**Accepted**:
+The state of a run whose gate would fail but passes because the acceptance label is on the pull request. The verdict, counts and sections are unchanged; only the step's outcome is.
+_Avoid_: approved, overridden, bypassed, skipped
+
+**Gate line**:
+The short paragraph at the foot of the sticky comment and the job summary, above the footer, that says what the check fails on and names the acceptance label, or says that the changes are accepted. Present only when the gate would fail.
+_Avoid_: hint, call to action, footer note
+
 ## Naming
 
 **Cambium**:

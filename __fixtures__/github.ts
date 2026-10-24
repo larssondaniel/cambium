@@ -6,8 +6,9 @@ import type {
 
 /**
  * In-memory fake of the GitHub port. Holds files by sha and path, a
- * merge-base, an optional existing sticky comment, and a flag that makes
- * comment writes come back forbidden. Records what Cambium wrote.
+ * merge-base, an optional existing sticky comment, the pull request's label
+ * names, and flags that make comment writes or the labels read come back
+ * forbidden or throw. Records what Cambium wrote and read.
  */
 export class FakeGitHub implements GitHubPort {
   readonly files = new Map<string, string>()
@@ -17,11 +18,19 @@ export class FakeGitHub implements GitHubPort {
   forbidden: false | 'read' | 'write' = false
   /** Makes the comment call throw, as a 5xx or a 422 from GitHub would. */
   commentError: Error | undefined
+  /** Names of the labels on the pull request. */
+  labels: string[] = []
+  /** Makes the labels read come back forbidden. */
+  labelsForbidden = false
+  /** Makes the labels read throw. */
+  labelsError: Error | undefined
 
   /** Arguments of the one merge-base call, when made. */
   mergeBaseRequest: { baseSha: string; headSha: string } | undefined
   summary: string | undefined
   comment: { body: string; result: StickyCommentResult } | undefined
+  /** Whether the labels were read. */
+  labelsRead = false
 
   file(sha: string, path: string, text: string): this {
     this.files.set(`${sha}:${path}`, text)
@@ -57,5 +66,12 @@ export class FakeGitHub implements GitHubPort {
 
   async writeSummary(markdown: string): Promise<void> {
     this.summary = markdown
+  }
+
+  async listLabels(): Promise<string[] | 'forbidden'> {
+    this.labelsRead = true
+    if (this.labelsError) throw this.labelsError
+    if (this.labelsForbidden) return 'forbidden'
+    return [...this.labels]
   }
 }
