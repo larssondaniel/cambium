@@ -19,11 +19,11 @@ body {
   border-radius: 12px;
 }
 
-.stage.light {
+.stage[data-theme='light'] {
   background: #f6f8fa;
 }
 
-.stage.dark {
+.stage[data-theme='dark'] {
   background: #010409;
 }
 
@@ -119,50 +119,50 @@ body {
   color: #59636e;
 }
 
-.dark .card {
+[data-theme='dark'] .card {
   background: #0d1117;
   border-color: #3d444d;
 }
 
-.dark .card .head {
+[data-theme='dark'] .card .head {
   background: #151b23;
   border-color: #3d444d;
   color: #9198a1;
 }
 
-.dark .card .head b {
+[data-theme='dark'] .card .head b {
   color: #f0f6fc;
 }
 
-.dark .card .head .bot {
+[data-theme='dark'] .card .head .bot {
   border-color: #3d444d;
   color: #9198a1;
 }
 
-.dark .card .head .avatar {
+[data-theme='dark'] .card .head .avatar {
   background: #fff;
   border-color: #3d444d;
 }
 
-.dark .markdown-body {
+[data-theme='dark'] .markdown-body {
   color: #f0f6fc;
 }
 
-.dark .markdown-body h3,
-.dark .markdown-body h4,
-.dark .markdown-body strong {
+[data-theme='dark'] .markdown-body h3,
+[data-theme='dark'] .markdown-body h4,
+[data-theme='dark'] .markdown-body strong {
   color: #f0f6fc;
 }
 
-.dark .markdown-body code {
+[data-theme='dark'] .markdown-body code {
   background: #3d444d66;
   color: #f0f6fc;
 }
 
-.dark .markdown-body a {
+[data-theme='dark'] .markdown-body a {
   color: #4493f8;
 }
 
-.dark .markdown-body sub {
+[data-theme='dark'] .markdown-body sub {
   color: #9198a1;
 }
