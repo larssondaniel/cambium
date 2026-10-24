@@ -60,16 +60,19 @@ export class OctokitGitHub implements GitHubPort {
     body,
     createIfMissing
   }: StickyCommentRequest): Promise<StickyCommentResult> {
-    const comments = await this.octokit.paginate(
-      this.octokit.rest.issues.listComments,
-      {
-        ...this.repo,
-        issue_number: this.pullNumber,
-        per_page: 100
-      }
-    )
-    const existing = comments.find((comment) => comment.body?.includes(marker))
     try {
+      // On a private repository a read-only token is refused here already.
+      const comments = await this.octokit.paginate(
+        this.octokit.rest.issues.listComments,
+        {
+          ...this.repo,
+          issue_number: this.pullNumber,
+          per_page: 100
+        }
+      )
+      const existing = comments.find((comment) =>
+        comment.body?.includes(marker)
+      )
       if (existing) {
         await this.octokit.rest.issues.updateComment({
           ...this.repo,
@@ -92,7 +95,14 @@ export class OctokitGitHub implements GitHubPort {
   }
 
   async writeSummary(markdown: string): Promise<void> {
-    await core.summary.addRaw(markdown, true).write()
+    try {
+      await core.summary.addRaw(markdown, true).write()
+    } catch (error) {
+      // A summary over the 1 MiB cap must not cost the comment, the outputs or the gate.
+      core.warning(
+        `Could not write the job summary: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
   }
 }
 

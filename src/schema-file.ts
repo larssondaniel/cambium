@@ -8,7 +8,8 @@ import {
 
 /** Which commit a schema file was read at, for error messages. */
 export interface SchemaOrigin {
-  label: 'merge-base' | 'head'
+  /** Which schema the file is: the base schema (at the merge-base) or the head schema. */
+  label: 'base' | 'head'
   sha: string
 }
 
@@ -17,10 +18,11 @@ export class SchemaFileError extends Error {
   constructor(
     readonly path: string,
     readonly origin: SchemaOrigin,
-    readonly cause: Error
+    cause: Error
   ) {
     super(
-      `Could not parse \`${path}\` at the ${origin.label} (${shortSha(origin.sha)}): ${cause.message}`
+      `Could not parse the ${origin.label} schema, \`${path}\` at ${shortSha(origin.sha)}: ${cause.message}`,
+      { cause }
     )
     this.name = 'SchemaFileError'
   }

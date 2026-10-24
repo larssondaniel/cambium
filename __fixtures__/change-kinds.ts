@@ -208,56 +208,56 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     kind: 'DESCRIPTION_CHANGED (type)',
     base: 'type User { id: ID! }',
     head: '"""A person with an account.""" type User { id: ID! }',
-    line: '`User` description changed: "A person with an account."',
+    line: '`User` description added: "A person with an account."',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (field)',
     base: 'type User { "Old" id: ID! }',
     head: 'type User { "Stable across renames" id: ID! }',
-    line: '`User.id` description changed: "Stable across renames"',
+    line: '`User.id` description changed from "Old" to "Stable across renames"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (removed)',
     base: 'type User { "Old" id: ID! }',
     head: 'type User { id: ID! }',
-    line: '`User.id` description removed',
+    line: '`User.id` description "Old" removed',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (enum value)',
     base: 'enum Role { ADMIN }',
     head: 'enum Role { "Can do anything" ADMIN }',
-    line: '`Role.ADMIN` description changed: "Can do anything"',
+    line: '`Role.ADMIN` description added: "Can do anything"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (input field)',
     base: 'input Filter { limit: Int }',
     head: 'input Filter { "Page size" limit: Int }',
-    line: '`Filter.limit` description changed: "Page size"',
+    line: '`Filter.limit` description added: "Page size"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (argument)',
     base: 'type Query { search(term: String): String }',
     head: 'type Query { search("Free text" term: String): String }',
-    line: '`Query.search(term:)` description changed: "Free text"',
+    line: '`Query.search(term:)` description added: "Free text"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (directive)',
     base: `${QUERY} directive @auth on FIELD_DEFINITION`,
     head: `${QUERY} "Requires a signed-in user" directive @auth on FIELD_DEFINITION`,
-    line: '`@auth` description changed: "Requires a signed-in user"',
+    line: '`@auth` description added: "Requires a signed-in user"',
     counts: [0, 0, 1]
   },
   {
     kind: 'DESCRIPTION_CHANGED (directive argument)',
     base: `${QUERY} directive @auth(role: String) on FIELD_DEFINITION`,
     head: `${QUERY} directive @auth("Role name" role: String) on FIELD_DEFINITION`,
-    line: '`@auth(role:)` description changed: "Role name"',
+    line: '`@auth(role:)` description added: "Role name"',
     counts: [0, 0, 1]
   },
   {
@@ -268,7 +268,7 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     migrations, so clients may cache by it indefinitely without risk.
     """
     type User { id: ID! }`,
-    line: '`User` description changed: "The identifier of the user. It is stable across renames, merges and migrations…"',
+    line: '`User` description added: "The identifier of the user. It is stable across renames, merges and migrations…"',
     counts: [0, 0, 1]
   },
   {
@@ -387,7 +387,7 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     kind: 'DEPRECATION_ADDED (field, with reason)',
     base: 'type User { contact: String }',
     head: 'type User { contact: String @deprecated(reason: "Use `User.contact.email`") }',
-    line: '`User.contact` deprecated: "Use `User.contact.email`"',
+    line: '`User.contact` deprecated: "Use \\`User.contact.email\\`"',
     counts: [0, 0, 1]
   },
   {
@@ -415,7 +415,7 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     kind: 'DEPRECATION_ADDED (input field)',
     base: 'input Filter { limit: Int }',
     head: 'input Filter { limit: Int @deprecated(reason: "Use `first`") }',
-    line: '`Filter.limit` deprecated: "Use `first`"',
+    line: '`Filter.limit` deprecated: "Use \\`first\\`"',
     counts: [0, 0, 1]
   },
   {
@@ -429,7 +429,7 @@ export const SAFE_KINDS: ChangeKindFixture[] = [
     kind: 'DEPRECATION_REASON_CHANGED',
     base: 'type User { contact: String @deprecated(reason: "Gone soon") }',
     head: 'type User { contact: String @deprecated(reason: "Use `User.email`") }',
-    line: '`User.contact` deprecation reason changed: "Use `User.email`"',
+    line: '`User.contact` deprecation reason changed from "Gone soon" to "Use \\`User.email\\`"',
     counts: [0, 0, 1]
   }
 ]

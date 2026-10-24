@@ -170,7 +170,7 @@ exports[`whole-file events renders a removed schema as one breaking change 1`] =
 
 1 breaking · 0 dangerous · 0 safe
 
-\`schema.graphql\` exists at the merge-base and is absent at the head commit.
+\`schema.graphql\` exists at the merge-base and is absent at the head.
 
 <sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
 `;

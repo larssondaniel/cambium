@@ -6,14 +6,13 @@ export default {
   collectCoverage: true,
   collectCoverageFrom: ['./src/**'],
   coverageDirectory: './coverage',
-  // The Octokit adapter and the runner wiring are thin and are proven by the
-  // dogfooding workflow on this repository's own pull requests, not by unit
-  // tests. See docs/design-decisions.md, item 15.
+  // The Octokit adapter is thin and is proven by the dogfooding workflow on
+  // this repository's own pull requests, not by unit tests. See
+  // docs/design-decisions.md, item 15.
   coveragePathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
     '<rootDir>/src/index.ts',
-    '<rootDir>/src/main.ts',
     '<rootDir>/src/octokit-github.ts'
   ],
   coverageReporters: ['json-summary', 'text', 'lcov'],

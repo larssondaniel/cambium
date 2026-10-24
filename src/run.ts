@@ -1,5 +1,5 @@
 import { diffSchemas } from './diff/index.js'
-import type { GitHubPort } from './github.js'
+import type { GitHubPort, StickyCommentResult } from './github.js'
 import { countsOf, inventoryOf, type Counts, type Report } from './report.js'
 import { render } from './render.js'
 import { loadSchema, SchemaFileError, shortSha } from './schema-file.js'
@@ -67,6 +67,12 @@ export async function run({
   }
 
   const schemaPath = inputs.schema
+  if (schemaPath.includes('-->')) {
+    return {
+      failure: `\`schema\` must not contain \`-->\`; got "${schemaPath}".`
+    }
+  }
+
   const mergeBase = await github.resolveMergeBase(
     pullRequest.baseSha,
     pullRequest.headSha
@@ -93,7 +99,7 @@ export async function run({
     return {
       failure:
         `\`${schemaPath}\` does not exist at the merge-base (${shortSha(mergeBase)}) ` +
-        `or at the head commit (${shortSha(pullRequest.headSha)}). Check the \`schema\` input.`
+        `or at the head (${shortSha(pullRequest.headSha)}). Check the \`schema\` input.`
     }
   }
 
@@ -106,13 +112,20 @@ export async function run({
       'This pull request comes from a fork, so Cambium cannot comment on it. The report is in the job summary.'
   } else {
     const marker = stickyMarker(schemaPath)
-    const result = await github.upsertStickyComment({
-      marker,
-      body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl })}\n${marker}`,
-      createIfMissing: !(
-        report.event === 'changed' && report.changes.length === 0
-      )
-    })
+    let result: StickyCommentResult
+    try {
+      result = await github.upsertStickyComment({
+        marker,
+        body: `${render(report, { budget: COMMENT_BUDGET, summaryUrl })}\n${marker}`,
+        createIfMissing: !(
+          report.event === 'changed' && report.changes.length === 0
+        )
+      })
+    } catch (error) {
+      // The report and the outputs are already there; only the comment is lost.
+      outcome.failure = `Could not comment on the pull request: ${messageOf(error)}`
+      return outcome
+    }
     if (result === 'forbidden') {
       outcome.failure =
         'Could not comment on the pull request: GitHub returned 403. ' +
@@ -128,6 +141,10 @@ export async function run({
 /** The hidden marker that makes the comment sticky, one per schema file. */
 export function stickyMarker(schemaPath: string): string {
   return `<!-- cambium: schema=${schemaPath} -->`
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function parseFailOn(value: string): FailOn | undefined {
@@ -154,7 +171,7 @@ function buildReport(
     return { event: 'new-schema', schemaPath, inventory: inventoryOf(head) }
   }
   const base = loadSchema(baseText, schemaPath, {
-    label: 'merge-base',
+    label: 'base',
     sha: mergeBase
   })
   return { event: 'changed', schemaPath, changes: diffSchemas(base, head) }

@@ -8,7 +8,7 @@ exports[`a pull request that changes the schema expands the safe section when sa
 #### Safe
 
 - \`Query.me\` added
-- \`User\` description changed: "A person with an account."
+- \`User\` description added: "A person with an account."
 - \`User.nickname\` added
 
 <sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
@@ -32,7 +32,7 @@ exports[`a pull request that changes the schema posts the comment: verdict, coun
 
 - \`Invoice\` type added
 - \`Query.invoices\` added
-- \`User.contact\` deprecated: "Use \`User.contact.email\`"
+- \`User.contact\` deprecated: "Use \\\`User.contact.email\\\`"
 - \`User.displayName\` added
 - \`User.name\` changed type from \`String\` to \`String!\`
 
@@ -44,7 +44,7 @@ exports[`a pull request that changes the schema posts the comment: verdict, coun
 exports[`a pull request that leaves the schema unchanged updates an existing comment to "No schema changes" 1`] = `
 "### No schema changes
 
-\`schema.graphql\` is the same schema at the merge-base and at the head commit.
+\`schema.graphql\` is the same schema at the merge-base and at the head.
 
 <sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
 `;
@@ -64,7 +64,7 @@ exports[`an absent or unparsable schema file reports a removed schema as breakin
 
 1 breaking · 0 dangerous · 0 safe
 
-\`schema.graphql\` exists at the merge-base and is absent at the head commit.
+\`schema.graphql\` exists at the merge-base and is absent at the head.
 
 <sub>Cambium · [larssondaniel/cambium](https://github.com/larssondaniel/cambium)</sub>"
 `;

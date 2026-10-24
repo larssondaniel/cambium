@@ -24,9 +24,10 @@ export function readGraphqlJsChanges(
   base: GraphQLSchema,
   head: GraphQLSchema
 ): Change[] {
+  const schemas = new Schemas(base, head)
   return findSchemaChanges(base, head).map(({ type, description }) => {
     const kind = type as ChangeKind
-    const read = READERS[kind]?.(description, base, head)
+    const read = READERS[kind]?.(description, schemas)
     return read
       ? { severity: severityOf(kind), kind, ...read }
       : {
@@ -40,9 +41,38 @@ export function readGraphqlJsChanges(
 
 type Reader = (
   description: string,
-  base: GraphQLSchema,
-  head: GraphQLSchema
+  schemas: Schemas
 ) => Omit<Change, 'severity' | 'kind'> | undefined
+
+/** The two schemas a reader looks values up in, plus the one piece of state a reader needs. */
+class Schemas {
+  private readonly directiveArgumentsSeen = new Map<string, number>()
+
+  constructor(
+    readonly base: GraphQLSchema,
+    readonly head: GraphQLSchema
+  ) {}
+
+  /**
+   * graphql-js names a directive argument whose description changed as
+   * `@tag(tag)`, losing the argument. It reports those arguments in the base
+   * directive's argument order, so the n-th such sentence for a directive is
+   * its n-th argument with a changed description.
+   */
+  nextChangedDirectiveArgument(directive: string): string | undefined {
+    const baseArgs = this.base.getDirective(directive)?.args ?? []
+    const headArgs = this.head.getDirective(directive)?.args ?? []
+    const changed = baseArgs
+      .filter((arg) => {
+        const headArg = headArgs.find((a) => a.name === arg.name)
+        return headArg && descriptionOf(arg) !== descriptionOf(headArg)
+      })
+      .map((arg) => arg.name)
+    const seen = this.directiveArgumentsSeen.get(directive) ?? 0
+    this.directiveArgumentsSeen.set(directive, seen + 1)
+    return changed[seen]
+  }
+}
 
 const NAME = String.raw`(\S+?)`
 
@@ -85,7 +115,7 @@ function typeChanged(pattern: string): Reader {
 }
 
 /** Default values can contain spaces, so they are read from the schemas, not the sentence. */
-const defaultChanged: Reader = (description, base, head) => {
+const defaultChanged: Reader = (description, { base, head }) => {
   const match =
     /^(\S+?) (?:defaultValue was removed|has changed defaultValue from .* to .*|added a defaultValue .*)\.$/.exec(
       description
@@ -104,36 +134,26 @@ const defaultChanged: Reader = (description, base, head) => {
  * sentence prints a removed description as the word "undefined", and names a
  * directive argument by its directive's name twice (`@tag(tag)`).
  */
-const descriptionChanged: Reader = (description, base, head) => {
+const descriptionChanged: Reader = (description, schemas) => {
   const match =
     /^Description of (?:field |input-field |enum value |argument )?(\S+?) has changed to /.exec(
       description
     )
   if (!match) return undefined
-  const path = repairDirectiveArgumentPath(match[1], base, head)
-  return { path, text: descriptionOf(resolvePath(head, path)) }
+  const path = repairDirectiveArgumentPath(match[1], schemas)
+  return {
+    path,
+    before: descriptionOf(resolvePath(schemas.base, path)),
+    after: descriptionOf(resolvePath(schemas.head, path))
+  }
 }
 
-function repairDirectiveArgumentPath(
-  path: string,
-  base: GraphQLSchema,
-  head: GraphQLSchema
-): string {
+function repairDirectiveArgumentPath(path: string, schemas: Schemas): string {
   const match = /^@(\w+)\(\1\)$/.exec(path)
   if (!match) return path
   const directive = match[1]
-  const changedArgument = head
-    .getDirective(directive)
-    ?.args.find(
-      (arg) =>
-        descriptionOf(arg) !==
-        descriptionOf(
-          base.getDirective(directive)?.args.find((a) => a.name === arg.name)
-        )
-    )
-  return changedArgument
-    ? `@${directive}(${changedArgument.name}:)`
-    : `@${directive}`
+  const argument = schemas.nextChangedDirectiveArgument(directive)
+  return argument ? `@${directive}(${argument}:)` : `@${directive}`
 }
 
 const typeChangedKind: Reader = (description) => {
@@ -145,7 +165,7 @@ const typeChangedKind: Reader = (description) => {
   return { path, before: before.toLowerCase(), after: after.toLowerCase() }
 }
 
-const typeRemoved: Reader = (description, base) => {
+const typeRemoved: Reader = (description, { base }) => {
   const match =
     /^(Standard scalar )?(\S+?) was removed(?: because it is not referenced anymore)?\.$/.exec(
       description
@@ -160,7 +180,7 @@ const typeRemoved: Reader = (description, base) => {
   }
 }
 
-const typeAdded: Reader = (description, _base, head) => {
+const typeAdded: Reader = (description, { head }) => {
   const match = /^(\S+?) was added\.$/.exec(description)
   if (!match) return undefined
   const path = match[1]

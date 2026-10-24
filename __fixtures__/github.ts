@@ -13,7 +13,10 @@ export class FakeGitHub implements GitHubPort {
   readonly files = new Map<string, string>()
   mergeBase = 'mergebase0000000000000000000000000000000'
   existingComment: string | undefined
-  forbidden = false
+  /** Makes the comment lookup (`read`) or the comment write (`write`) come back forbidden. */
+  forbidden: false | 'read' | 'write' = false
+  /** Makes the comment call throw, as a 5xx or a 422 from GitHub would. */
+  commentError: Error | undefined
 
   /** Arguments of the one merge-base call, when made. */
   mergeBaseRequest: { baseSha: string; headSha: string } | undefined
@@ -40,9 +43,11 @@ export class FakeGitHub implements GitHubPort {
     createIfMissing
   }: StickyCommentRequest): Promise<StickyCommentResult> {
     if (!body.includes(marker)) throw new Error('comment body lacks its marker')
+    if (this.commentError) throw this.commentError
+    if (this.forbidden === 'read') return 'forbidden'
     const existing = this.existingComment?.includes(marker)
     if (!existing && !createIfMissing) return 'none'
-    if (this.forbidden) {
+    if (this.forbidden === 'write') {
       this.comment = { body, result: 'forbidden' }
       return 'forbidden'
     }

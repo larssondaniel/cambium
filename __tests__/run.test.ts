@@ -32,7 +32,8 @@ interface Scenario {
   failOn?: string
   fromFork?: boolean
   existingComment?: string
-  forbidden?: boolean
+  forbidden?: 'read' | 'write'
+  commentError?: Error
   schema?: string
 }
 
@@ -46,6 +47,7 @@ async function cambium(
   if (scenario.head !== undefined) github.file(HEAD_SHA, schema, scenario.head)
   github.existingComment = scenario.existingComment
   github.forbidden = scenario.forbidden ?? false
+  github.commentError = scenario.commentError
   const outcome = await run({
     inputs: { schema, failOn: scenario.failOn ?? 'breaking' },
     pullRequest: {
@@ -214,7 +216,7 @@ describe('an absent or unparsable schema file', () => {
     const { outcome, github } = await cambium({})
 
     expect(outcome.failure).toBe(
-      '`schema.graphql` does not exist at the merge-base (mergeba) or at the head commit (head000). Check the `schema` input.'
+      '`schema.graphql` does not exist at the merge-base (mergeba) or at the head (head000). Check the `schema` input.'
     )
     expect(outcome.outputs).toBeUndefined()
     expect(github.summary).toBeUndefined()
@@ -245,7 +247,7 @@ describe('an absent or unparsable schema file', () => {
     })
 
     expect(outcome.failure).toBe(
-      'Could not parse `schema.graphql` at the head (head000): Syntax Error: Expected Name, found <EOF>.'
+      'Could not parse the head schema, `schema.graphql` at head000: Syntax Error: Expected Name, found <EOF>.'
     )
   })
 
@@ -256,7 +258,7 @@ describe('an absent or unparsable schema file', () => {
     })
 
     expect(outcome.failure).toBe(
-      'Could not parse `schema.graphql` at the merge-base (mergeba): Unknown type "Missing".'
+      'Could not parse the base schema, `schema.graphql` at mergeba: Unknown type "Missing".'
     )
   })
 
@@ -267,7 +269,7 @@ describe('an absent or unparsable schema file', () => {
     })
 
     expect(outcome.failure).toBe(
-      'Could not parse `schema.graphql` at the head (head000): Introspection JSON has no `__schema` key, neither at the top level nor under `data`'
+      'Could not parse the head schema, `schema.graphql` at head000: Introspection JSON has no `__schema` key, neither at the top level nor under `data`'
     )
   })
 })
@@ -340,15 +342,144 @@ describe('a pull request from a fork', () => {
 })
 
 describe('a same-repo pull request whose token cannot comment', () => {
-  it('fails with the permissions block to add, after writing the summary and outputs', async () => {
-    const { outcome, github } = await cambium({ ...safeOnly, forbidden: true })
+  const permissionsFailure =
+    "Could not comment on the pull request: GitHub returned 403. Add these lines to the job's `permissions:` block:\n\n" +
+    'permissions:\n  contents: read\n  pull-requests: write'
 
-    expect(outcome.failure).toBe(
-      "Could not comment on the pull request: GitHub returned 403. Add these lines to the job's `permissions:` block:\n\n" +
-        'permissions:\n  contents: read\n  pull-requests: write'
-    )
+  it('fails with the permissions block to add when the write is forbidden, after writing the summary and outputs', async () => {
+    const { outcome, github } = await cambium({
+      ...safeOnly,
+      forbidden: 'write'
+    })
+
+    expect(outcome.failure).toBe(permissionsFailure)
     expect(github.summary).toContain('### Schema changed, nothing breaking')
     expect(outcome.outputs).toEqual({ breaking: 0, dangerous: 0, safe: 3 })
+  })
+
+  it('fails the same way when even listing the comments is forbidden, as on a private repository', async () => {
+    const { outcome, github } = await cambium({
+      ...safeOnly,
+      forbidden: 'read'
+    })
+
+    expect(outcome.failure).toBe(permissionsFailure)
+    expect(github.summary).toContain('### Schema changed, nothing breaking')
+    expect(outcome.outputs).toEqual({ breaking: 0, dangerous: 0, safe: 3 })
+  })
+
+  it('keeps the outputs when the comment call throws', async () => {
+    const { outcome, github } = await cambium({
+      ...example,
+      commentError: new Error('Server Error (502)')
+    })
+
+    expect(outcome.outputs).toEqual({ breaking: 1, dangerous: 2, safe: 5 })
+    expect(outcome.failure).toBe(
+      'Could not comment on the pull request: Server Error (502)'
+    )
+    expect(github.summary).toContain('### Breaking schema change')
+  })
+})
+
+describe('schema text that looks like markdown', () => {
+  const base = `
+    type Query {
+      ping: String
+      search(q: String = "plain"): String
+    }`
+  const head = `
+    type Query {
+      "Ping @org/team, see </details> and ![x](https://e/x.png) | col [here](https://e)"
+      ping: String
+      search(q: String = "a\`b"): String
+    }`
+
+  it('is shown as text, never as markup, mentions or images', async () => {
+    const { github } = await cambium({ base, head, failOn: 'never' })
+
+    expect(github.summary).toContain(
+      '- `Query.ping` description added: "Ping @\u200borg/team, see \\</details\\> and \\!\\[x\\]\\(https://e/x.png\\) \\| col \\[here\\]\\(https://e\\)"'
+    )
+    expect(github.summary).not.toContain('see </details>')
+    expect(github.summary).not.toContain('@org')
+  })
+
+  it('keeps a default value with a backtick inside one code span', async () => {
+    const { github } = await cambium({ base, head, failOn: 'never' })
+
+    expect(github.summary).toContain(
+      '- `Query.search(q:)` default changed from `"plain"` to ``"a`b"``'
+    )
+  })
+})
+
+describe('an element that is born deprecated', () => {
+  it('is one added line, not an added line plus a deprecation line', async () => {
+    const field = await cambium({
+      base: 'type User { id: ID! }',
+      head: 'type User { id: ID! old: String @deprecated(reason: "Use `id`") }',
+      failOn: 'never'
+    })
+    expect(field.github.summary).toContain('- `User.old` added')
+    expect(field.github.summary).not.toContain('deprecated')
+    expect(field.outcome.outputs).toEqual({
+      breaking: 0,
+      dangerous: 0,
+      safe: 1
+    })
+
+    const value = await cambium({
+      base: 'enum Role { ADMIN }',
+      head: 'enum Role { ADMIN GUEST @deprecated }',
+      failOn: 'never'
+    })
+    expect(value.github.summary).toContain('- `Role.GUEST` added to enum')
+    expect(value.outcome.outputs).toEqual({
+      breaking: 0,
+      dangerous: 1,
+      safe: 0
+    })
+
+    const type = await cambium({
+      base: 'type Query { ok: Boolean }',
+      head: 'type Query { ok: Boolean } type Legacy { a: String @deprecated, b: String @deprecated }',
+      failOn: 'never'
+    })
+    expect(type.github.summary).toContain('- `Legacy` type added')
+    expect(type.outcome.outputs).toEqual({ breaking: 0, dangerous: 0, safe: 1 })
+  })
+})
+
+describe('a directive whose arguments both change description', () => {
+  it('gets one line per argument', async () => {
+    const { github, outcome } = await cambium({
+      base: 'type Query { ok: Boolean } directive @auth(role: String, scope: String) on FIELD_DEFINITION',
+      head: 'type Query { ok: Boolean } directive @auth("Role name" role: String, "Scope name" scope: String) on FIELD_DEFINITION',
+      failOn: 'never'
+    })
+
+    expect(github.summary).toContain(
+      '- `@auth(role:)` description added: "Role name"'
+    )
+    expect(github.summary).toContain(
+      '- `@auth(scope:)` description added: "Scope name"'
+    )
+    expect(outcome.outputs).toEqual({ breaking: 0, dangerous: 0, safe: 2 })
+  })
+})
+
+describe('the schema input', () => {
+  it('rejects a path that could close the sticky marker', async () => {
+    const { outcome, github } = await cambium({
+      ...example,
+      schema: 'a-->b.graphql'
+    })
+
+    expect(outcome.failure).toBe(
+      '`schema` must not contain `-->`; got "a-->b.graphql".'
+    )
+    expect(github.mergeBaseRequest).toBeUndefined()
   })
 })
 

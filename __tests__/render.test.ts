@@ -143,4 +143,21 @@ describe('a change graphql-js describes in words Cambium does not recognise', ()
 
     expect(body).toContain('#### Breaking\n\n- Something novel happened\n')
   })
+
+  it('escapes markup in those words too', () => {
+    const body = render({
+      event: 'changed',
+      schemaPath: 'schema.graphql',
+      changes: [
+        {
+          severity: 'safe',
+          kind: 'UNRECOGNIZED',
+          path: '',
+          description: 'Field <b>x</b> pinged @someone.'
+        }
+      ]
+    })
+
+    expect(body).toContain('- Field \\<b\\>x\\</b\\> pinged @\u200bsomeone\n')
+  })
 })
