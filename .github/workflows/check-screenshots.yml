@@ -1,0 +1,75 @@
+# The README's comment images are rendered from the example fixture pair by
+# Cambium's own renderer (`npm run screenshots`). This workflow renders them
+# again and fails when the committed images are stale, so the README can never
+# show a comment the product no longer produces.
+#
+# Text rasterisation differs between operating systems, so the committed images
+# are this workflow's own output. When it fails, download the `screenshots`
+# artifact it uploads and commit the pair.
+name: Check screenshots
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  check-screenshots:
+    name: Check docs/images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        id: setup-node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install Dependencies
+        id: install
+        run: npm ci
+
+      - name: Cache Playwright Chromium
+        id: cache-chromium
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        id: install-chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Render Screenshots
+        id: render
+        run: npm run screenshots
+
+      # This will fail the workflow if the images differ from the committed ones.
+      - name: Compare Images
+        id: diff
+        run: |
+          if [ -n "$(git status --porcelain docs/images)" ]; then
+            echo "The committed screenshots are stale. See status below:"
+            git status --short docs/images
+            exit 1
+          fi
+
+      # If the images were stale, upload the fresh pair to commit.
+      - if: ${{ failure() && steps.diff.outcome == 'failure' }}
+        name: Upload Artifact
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: docs/images/

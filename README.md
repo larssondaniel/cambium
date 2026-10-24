@@ -1,9 +1,6 @@
 # Cambium
 
 [![CI](https://github.com/larssondaniel/cambium/actions/workflows/ci.yml/badge.svg)](https://github.com/larssondaniel/cambium/actions/workflows/ci.yml)
-[![Check dist/](https://github.com/larssondaniel/cambium/actions/workflows/check-dist.yml/badge.svg)](https://github.com/larssondaniel/cambium/actions/workflows/check-dist.yml)
-[![CodeQL](https://github.com/larssondaniel/cambium/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/larssondaniel/cambium/actions/workflows/codeql-analysis.yml)
-![Coverage](badges/coverage.svg)
 
 Cambium is a GitHub Action that diffs a committed GraphQL schema between a pull
 request's merge-base and its head, and posts one comment that tells the reviewer
@@ -17,15 +14,13 @@ leaves GitHub.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/comment-dark.png">
-  <img src="docs/images/comment-light.png" width="800" alt="A GitHub pull request comment by github-actions. Heading: Breaking schema change. Counts line: 1 breaking, 2 dangerous, 5 safe. Under Breaking: Query.orders(status:) changed type from OrderStatus to OrderStatus!. Under Dangerous: OrderStatus.REFUNDED added to enum, clients that switch over OrderStatus may not handle it; and Query.search(sort:) optional argument added, existing calls now take its default. Then a collapsed section titled 5 safe changes, and a footer reading Cambium, larssondaniel/cambium.">
+  <img src="docs/images/comment-light.png" width="760" alt="A GitHub pull request comment by github-actions. Heading: Breaking schema change. Counts line: 1 breaking, 2 dangerous, 5 safe. Under Breaking: Query.orders(status:) changed type from OrderStatus to OrderStatus!. Under Dangerous: OrderStatus.REFUNDED added to enum, clients that switch over OrderStatus may not handle it; and Query.search(sort:) optional argument added, existing calls now take its default. Under an expanded section titled 5 safe changes: Invoice type added, Order.invoice added, Query.invoices added, User.displayName added, and User.email deprecated: Use User.contact.email. A footer reads Cambium, larssondaniel/cambium.">
 </picture>
 
-This is Cambium's own comment on
+This is the comment Cambium posts; the live version is on
 [pull request #6](https://github.com/larssondaniel/cambium/pull/6) of this
-repository, which changes the fixture schema the way a real pull request would.
-Expanding "5 safe changes" shows `User.email` deprecated with its reason quoted,
-and four additions: `Invoice`, `Query.invoices`, `Order.invoice` and
-`User.displayName`.
+repository, where the safe section is collapsed because something more important
+is on the page.
 
 The comment updates in place on every push, and the step fails on breaking
 changes, so Cambium can be a required check.

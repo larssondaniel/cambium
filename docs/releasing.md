@@ -4,8 +4,11 @@ Releases are made by hand; the floating major tag is moved by a workflow.
 
 1. Update `package.json`'s `version` and move the `Unreleased` section of
    `CHANGELOG.md` under the new version.
-2. Run `npm run all` so `dist/` matches the source, then commit and merge to
-   `main`. The check-dist workflow fails CI when the bundle drifts.
+2. Run `npm run all` so `dist/` matches the source. Run `npm run screenshots`
+   and commit `docs/images` if they changed; the committed pair is the output
+   of the Check screenshots workflow on Linux, so on another OS take its
+   artifact instead. Then commit and merge to `main`. The check-dist and
+   check-screenshots workflows fail CI when either drifts.
 3. Draft a GitHub release with tag `vX.Y.Z`, tick **Publish this Action to
    the GitHub Marketplace**, and choose the category **Code review**.
 4. Publishing the release triggers
