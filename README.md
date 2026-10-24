@@ -10,6 +10,11 @@ Cambium needs a schema file committed in the repository, SDL or introspection
 JSON. It does not check out code, needs no registry or account, and nothing
 leaves GitHub.
 
+Apollo schema checks and GraphQL Hive do this through a schema registry, and
+graphql-inspector through a GitHub App or a checkout step. Cambium is the
+smaller tool for repositories that only want the comment, and it takes severity
+from graphql-js rather than from a vendor's catalogue.
+
 ## What reviewers see
 
 <picture>
