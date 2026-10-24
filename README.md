@@ -19,7 +19,7 @@ from graphql-js rather than from a vendor's catalogue.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/comment-dark.png">
-  <img src="docs/images/comment-light.png" width="760" alt="A GitHub pull request comment by github-actions. Heading: Breaking schema change. Counts line: 1 breaking, 2 dangerous, 5 safe. Under Breaking: Query.orders(status:) changed type from OrderStatus to OrderStatus!. Under Dangerous: OrderStatus.REFUNDED added to enum, clients that switch over OrderStatus may not handle it; and Query.search(sort:) optional argument added, existing calls now take its default. Under an expanded section titled 5 safe changes: Invoice type added, Order.invoice added, Query.invoices added, User.displayName added, and User.email deprecated: Use User.contact.email. A footer reads Cambium, larssondaniel/cambium.">
+  <img src="docs/images/comment-light.png" width="760" alt="A GitHub pull request comment by github-actions. Heading: Breaking schema change. Counts line: 1 breaking, 2 dangerous, 5 safe. Under Breaking: Query.orders(status:) changed type from OrderStatus to OrderStatus!. Under Dangerous: OrderStatus.REFUNDED added to enum, clients that switch over OrderStatus may not handle it; and Query.search(sort:) optional argument added, existing calls now take its default. Under an expanded section titled 5 safe changes: Invoice type added, Order.invoice added, Query.invoices added, User.displayName added, and User.email deprecated: Use User.contact.email. A closing paragraph reads: This check fails on breaking changes. Adding the label schema-change-accepted accepts them for this pull request. A footer reads Cambium, larssondaniel/cambium.">
 </picture>
 
 This is the comment Cambium posts; the live version is on
@@ -28,7 +28,9 @@ repository, where the safe section is collapsed because something more important
 is on the page.
 
 The comment updates in place on every push, and the step fails on breaking
-changes, so Cambium can be a required check.
+changes, so Cambium can be a required check. When a breaking change is the right
+one, a reviewer adds a label to the pull request and the check passes for that
+pull request alone.
 
 ## Usage
 
@@ -37,6 +39,7 @@ name: Schema diff
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -61,11 +64,12 @@ Cambium names the missing lines when that happens.
 
 ## Inputs
 
-| Input          | Required | Default               | Description                                                                                    |
-| -------------- | -------- | --------------------- | ---------------------------------------------------------------------------------------------- |
-| `schema`       | yes      |                       | Path of the schema file in the repository. SDL or introspection JSON, detected by content.     |
-| `fail-on`      | no       | `breaking`            | Severity at or above which the step fails: `breaking`, `dangerous` or `never`.                 |
-| `github-token` | no       | `${{ github.token }}` | Token used to read the file and post the comment. Pass a GitHub App token to post as your app. |
+| Input          | Required | Default                  | Description                                                                                      |
+| -------------- | -------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `schema`       | yes      |                          | Path of the schema file in the repository. SDL or introspection JSON, detected by content.       |
+| `fail-on`      | no       | `breaking`               | Severity at or above which the step fails: `breaking`, `dangerous` or `never`.                   |
+| `accept-label` | no       | `schema-change-accepted` | Label that lets the check pass for one pull request when the gate would fail. Empty disables it. |
+| `github-token` | no       | `${{ github.token }}`    | Token used to read the file and post the comment. Pass a GitHub App token to post as your app.   |
 
 ## Outputs
 
@@ -100,7 +104,48 @@ notice saying so, and still applies the `fail-on` gate. Do not switch to
 security hazard.
 
 Dependabot pull requests run with a read-only token, so they get the job summary
-and the gate but no comment.
+and the gate but no comment. A maintainer can add the acceptance label to a fork
+or Dependabot pull request, and the gate passes the same way; the job summary
+names the label.
+
+## Accepting a breaking change
+
+Some breaking changes are the right ones: a field removed after its deprecation
+sunset, an enum value no client has sent in a year. When the check fails, the
+comment names the label that lets it through, `schema-change-accepted` by
+default. Add the label to the pull request and the step passes for that pull
+request alone, with a notice in the run and a line in the comment saying what
+was accepted. The verdict, the counts and the sections do not change, so the
+comment still lists what was accepted, and removing the label makes the next run
+fail again. Set `accept-label` to use a label name of your own, or set it to an
+empty string so that no label lets a change through.
+
+Cambium never creates the label. Create it once in the repository, which needs
+write access:
+
+```bash
+gh label create schema-change-accepted --description "Lets Cambium's check pass for this pull request"
+```
+
+The snippet above lists `labeled` and `unlabeled` under `types:` so that adding
+or removing the label starts a run on its own, which matters for reviewers with
+triage permission, who cannot re-run a workflow. Listing `types:` replaces the
+default set, so all five are named. Without them the label still takes effect,
+on the next push or a re-run.
+
+Anyone with triage permission or above can add the label, the author included;
+Cambium does not check who did. The label is an acceptance, not a review, and it
+has no memory: it accepts whatever the gate would fail on at each run, later
+pushes included, so remove it when a pull request deserves a second look.
+Required reviews and CODEOWNERS on the schema file and the workflow are the
+controls.
+
+Do not filter the job with `if:` on the label name. A skipped job satisfies a
+required check, so the pull request would merge without a run and the comment
+would never say what was accepted.
+
+Teams coming from GraphQL Inspector can keep the label they already use with
+`accept-label: approved-breaking-change`.
 
 ## Required checks and `paths:` filters
 
@@ -130,7 +175,8 @@ run owns its own comment.
 The reasoning behind the hard-to-reverse decisions lives in
 [`docs/adr/`](docs/adr/): committed files rather than generated schemas, the
 Contents API rather than a checkout, the merge-base rather than the branch tip,
-graphql-js as the source of severity, and the name. The vocabulary is in
+graphql-js as the source of severity, a label rather than a checkbox or a slash
+command for accepting a breaking change, and the name. The vocabulary is in
 [`GLOSSARY.md`](GLOSSARY.md), the remaining decisions in
 [`docs/design-decisions.md`](docs/design-decisions.md), and the ideas
 deliberately left for later in [`docs/v2-ideas.md`](docs/v2-ideas.md).
