@@ -6,6 +6,8 @@ All notable changes to Cambium are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-24
+
 ### Added
 
 - An acceptance label. When the gate would fail and the pull request carries the
@@ -46,5 +48,6 @@ its head, and reports every change in one pull request comment.
   file is reported with its type counts; a deleted one counts as breaking.
 - Three inputs: `schema`, `fail-on` and `github-token`.
 
-[Unreleased]: https://github.com/larssondaniel/cambium/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/larssondaniel/cambium/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/larssondaniel/cambium/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/larssondaniel/cambium/releases/tag/v1.0.0
