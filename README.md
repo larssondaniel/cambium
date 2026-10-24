@@ -1,5 +1,10 @@
 # Cambium
 
+[![CI](https://github.com/larssondaniel/cambium/actions/workflows/ci.yml/badge.svg)](https://github.com/larssondaniel/cambium/actions/workflows/ci.yml)
+[![Check dist/](https://github.com/larssondaniel/cambium/actions/workflows/check-dist.yml/badge.svg)](https://github.com/larssondaniel/cambium/actions/workflows/check-dist.yml)
+[![CodeQL](https://github.com/larssondaniel/cambium/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/larssondaniel/cambium/actions/workflows/codeql-analysis.yml)
+![Coverage](badges/coverage.svg)
+
 Cambium is a GitHub Action that diffs a committed GraphQL schema between a pull
 request's merge-base and its head, and posts one comment that tells the reviewer
 what breaks, what might, and what is safe.
